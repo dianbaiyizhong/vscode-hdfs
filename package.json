@@ -1,0 +1,202 @@
+{
+  "name": "vscode-hdfs",
+  "displayName": "HDFS Explorer",
+  "description": "Browse, view, and manage HDFS files and directories with CRUD operations and Kerberos authentication",
+  "version": "0.1.0",
+  "publisher": "vscode-hdfs",
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Data Science",
+    "Other"
+  ],
+  "keywords": [
+    "hdfs",
+    "hadoop",
+    "filesystem",
+    "kerberos"
+  ],
+  "activationEvents": [
+    "onView:hdfsExplorer",
+    "onCommand:hdfs.newConnection",
+    "onCommand:hdfs.deleteConnection",
+    "onCommand:hdfs.editConnection",
+    "onCommand:hdfs.refresh",
+    "onCommand:hdfs.createDirectory",
+
+    "onCommand:hdfs.delete",
+    "onCommand:hdfs.rename",
+    "onCommand:hdfs.upload",
+    "onCommand:hdfs.download",
+    "onCommand:hdfs.openFile",
+    "onCommand:hdfs.kinit"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hdfs",
+          "title": "HDFS Explorer",
+          "icon": "icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "hdfs": [
+        {
+          "id": "hdfsExplorer",
+          "name": "HDFS Explorer"
+        }
+      ]
+    },
+    "viewsWelcome": {
+      "hdfsExplorer": [
+        {
+          "condition": "!hdfs:hasConnections",
+          "contents": "No HDFS connections configured.\n[New Connection](command:hdfs.newConnection)\n[Configure Kerberos](command:hdfs.kinit)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "hdfs.newConnection",
+        "title": "HDFS: New Connection...",
+        "icon": "$(add)"
+      },
+      {
+        "command": "hdfs.deleteConnection",
+        "title": "HDFS: Delete Connection",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "hdfs.editConnection",
+        "title": "HDFS: Edit Connection...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "hdfs.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "hdfs.createDirectory",
+        "title": "HDFS: Create Directory...",
+        "icon": "$(new-folder)"
+      },
+
+      {
+        "command": "hdfs.delete",
+        "title": "HDFS: Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "hdfs.rename",
+        "title": "HDFS: Rename..."
+      },
+      {
+        "command": "hdfs.upload",
+        "title": "HDFS: Upload File...",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "hdfs.download",
+        "title": "HDFS: Download File..."
+      },
+      {
+        "command": "hdfs.openFile",
+        "title": "Open File",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "hdfs.kinit",
+        "title": "HDFS: Initialize Kerberos Ticket"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "hdfs.newConnection",
+          "when": "view == hdfsExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "hdfs.refresh",
+          "when": "view == hdfsExplorer",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "hdfs.refresh",
+          "when": "view == hdfsExplorer && viewItem == hdfsConnection",
+          "group": "inline@1"
+        },
+        {
+          "command": "hdfs.editConnection",
+          "when": "view == hdfsExplorer && viewItem == hdfsConnection",
+          "group": "inline@2"
+        },
+        {
+          "command": "hdfs.deleteConnection",
+          "when": "view == hdfsExplorer && viewItem == hdfsConnection",
+          "group": "inline@3"
+        },
+        {
+          "command": "hdfs.createDirectory",
+          "when": "view == hdfsExplorer && viewItem == hdfsDirectory",
+          "group": "inline@1"
+        },
+
+        {
+          "command": "hdfs.upload",
+          "when": "view == hdfsExplorer && viewItem == hdfsDirectory",
+          "group": "inline@3"
+        },
+        {
+          "command": "hdfs.delete",
+          "when": "view == hdfsExplorer && (viewItem == hdfsFile || viewItem == hdfsDirectory)",
+          "group": "inline@5"
+        },
+        {
+          "command": "hdfs.rename",
+          "when": "view == hdfsExplorer && (viewItem == hdfsFile || viewItem == hdfsDirectory)",
+          "group": "7_crud"
+        },
+        {
+          "command": "hdfs.download",
+          "when": "view == hdfsExplorer && viewItem == hdfsFile",
+          "group": "7_crud"
+        },
+        {
+          "command": "hdfs.openFile",
+          "when": "view == hdfsExplorer && viewItem == hdfsFile",
+          "group": "inline@0"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "HDFS",
+      "properties": {
+        "hdfs.curl.path": {
+          "type": "string",
+          "default": "curl",
+          "description": "Path to curl binary (required for KERBEROS auth mode)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
