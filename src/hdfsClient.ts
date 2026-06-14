@@ -10,6 +10,7 @@ export interface HdfsConfig {
   authMethod: 'SIMPLE' | 'KERBEROS';
   username?: string;
   curlPath: string;
+  insecure?: boolean;
 }
 
 export interface FileStatus {
@@ -159,13 +160,17 @@ export class HdfsClient {
     });
   }
 
+  private curlArgs(): string[] {
+    const args = ['--negotiate', '-u', ':', '--location', '--silent', '--show-error'];
+    if (this.config.insecure) args.push('--insecure');
+    return args;
+  }
+
   private curlExec(args: string[]): Promise<{ stdout: string; stderr: string }> {
     const curl = this.config.curlPath || 'curl';
     return new Promise((resolve, reject) => {
       execFile(curl, [
-        '--negotiate', '-u', ':',
-        '--location', '--silent', '--show-error',
-        ...args,
+        ...this.curlArgs(), ...args,
       ], { maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) reject(new Error(`curl failed: ${err.message}\n${stderr}`));
         else resolve({ stdout, stderr });
@@ -182,11 +187,7 @@ export class HdfsClient {
     const curl = this.config.curlPath || 'curl';
     return new Promise((resolve, reject) => {
       const child = spawn(curl, [
-        '--negotiate', '-u', ':',
-        '--location', '--silent', '--show-error',
-        '-X', 'PUT',
-        '-T', '-',
-        urlStr,
+        ...this.curlArgs(), '-X', 'PUT', '-T', '-', urlStr,
       ]);
       child.stdin.write(content);
       child.stdin.end();

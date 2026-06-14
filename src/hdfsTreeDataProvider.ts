@@ -10,6 +10,7 @@ export interface StoredConnection {
   authMethod: 'SIMPLE' | 'KERBEROS';
   username: string;
   curlPath: string;
+  insecure: boolean;
 }
 
 export class HdfsNode extends vscode.TreeItem {
@@ -82,6 +83,7 @@ export class HdfsTreeDataProvider implements vscode.TreeDataProvider<HdfsNode> {
         authMethod: conn.authMethod,
         username: conn.username,
         curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', 'curl'),
+        insecure: conn.insecure,
       };
       client = new HdfsClient(config);
       this.clients.set(conn.id, client);

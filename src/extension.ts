@@ -89,6 +89,19 @@ async function promptConnection(existing?: StoredConnection): Promise<StoredConn
     curlPath = c ?? 'curl';
   }
 
+  const insecurePick = await vscode.window.showQuickPick(
+    [
+      { label: 'No', description: 'Verify SSL certificates (default)' },
+      { label: 'Yes', description: 'Skip SSL certificate verification (--insecure)' },
+    ],
+    {
+      placeHolder: existing
+        ? `Skip SSL verification: ${existing.insecure ? 'Yes' : 'No'}`
+        : 'Skip SSL certificate verification?',
+    }
+  );
+  if (!insecurePick) return null;
+
   return {
     id: existing?.id ?? generateId(),
     name,
@@ -98,6 +111,7 @@ async function promptConnection(existing?: StoredConnection): Promise<StoredConn
     authMethod: authPick.label as 'SIMPLE' | 'KERBEROS',
     username,
     curlPath,
+    insecure: insecurePick.label === 'Yes',
   };
 }
 
