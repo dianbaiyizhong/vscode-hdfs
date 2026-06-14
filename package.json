@@ -3,7 +3,7 @@
   "displayName": "HDFS Explorer",
   "description": "Browse, view, and manage HDFS files and directories with CRUD operations and Kerberos authentication",
   "version": "0.1.0",
-  "publisher": "vscode-hdfs",
+  "publisher": "nntk",
   "license": "MIT",
   "icon": "icon.png",
   "engines": {
