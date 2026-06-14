@@ -110,6 +110,60 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView('hdfsExplorer', {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
+    dragAndDropController: {
+      dragMimeTypes: [],
+      dropMimeTypes: ['text/uri-list', 'files'],
+      handleDrop: async (target: HdfsNode | undefined, sources: vscode.DataTransfer) => {
+        if (!target || target.kind === 'file') return;
+
+        const conn = target.kind === 'connection' ? target.connection! : resolveConnection(target);
+        const destDir = target.kind === 'connection' ? '/' : target.fullPath!;
+
+        const uploads: { name: string; read: () => Thenable<Uint8Array> }[] = [];
+
+        const uriItem = sources.get('text/uri-list');
+        if (uriItem) {
+          const text = await uriItem.asString();
+          for (const line of text.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('file://')) continue;
+            try {
+              const uri = vscode.Uri.parse(trimmed);
+              const name = path.basename(uri.fsPath);
+              if (name) uploads.push({ name, read: () => vscode.workspace.fs.readFile(uri) });
+            } catch { /* skip invalid URI */ }
+          }
+        }
+
+        const fileItem = sources.get('files');
+        if (fileItem) {
+          const file = fileItem.asFile();
+          if (file) {
+            uploads.push({ name: file.name, read: () => file.data() });
+          }
+        }
+
+        if (uploads.length === 0) return;
+
+        const client = treeProvider.getClient(conn);
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `Uploading to ${destDir}` },
+          async (progress) => {
+            for (let i = 0; i < uploads.length; i++) {
+              const { name, read } = uploads[i];
+              progress.report({ message: `${name} (${i + 1}/${uploads.length})` });
+              try {
+                const content = Buffer.from(await read());
+                await client.writeFile(destDir === '/' ? '/' + name : destDir + '/' + name, content);
+              } catch (e: any) {
+                vscode.window.showErrorMessage(`Upload failed: ${name} - ${e.message}`);
+              }
+            }
+            treeProvider.refresh(target);
+          }
+        );
+      },
+    },
   });
   context.subscriptions.push(treeView);
 
