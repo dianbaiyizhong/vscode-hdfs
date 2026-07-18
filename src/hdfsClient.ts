@@ -25,6 +25,15 @@ export interface FileStatus {
   blockSize: number;
 }
 
+export interface ContentSummary {
+  directoryCount: number;
+  fileCount: number;
+  length: number;
+  quota: number;
+  spaceConsumed: number;
+  spaceQuota: number;
+}
+
 function encodePath(p: string): string {
   if (!p.startsWith('/')) p = '/' + p;
   return p.split('/').map(s => encodeURIComponent(s)).join('/');
@@ -35,6 +44,15 @@ export class HdfsClient {
 
   constructor(private config: HdfsConfig) {
     this.baseUrl = `${config.protocol}://${config.host}:${config.port}/webhdfs/v1`;
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.getFileStatus('/');
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async listStatus(path: string): Promise<FileStatus[]> {
@@ -66,6 +84,11 @@ export class HdfsClient {
       replication: fs.replication,
       blockSize: fs.blockSize,
     };
+  }
+
+  async contentSummary(path: string): Promise<ContentSummary> {
+    const data = await this.jsonRequest('GET', `${this.baseUrl}${encodePath(path)}?op=GETCONTENTSUMMARY`);
+    return data.ContentSummary as ContentSummary;
   }
 
   async mkdirs(path: string): Promise<boolean> {
@@ -201,11 +224,13 @@ export class HdfsClient {
     });
   }
 
-  async kinit(): Promise<void> {
-    const principal = vscode.workspace.getConfiguration('hdfs').get<string>('auth.kerberos.principal');
-    const keytab = vscode.workspace.getConfiguration('hdfs').get<string>('auth.kerberos.keytab');
-    if (!principal) throw new Error('Kerberos principal not configured (hdfs.auth.kerberos.principal)');
-    const args = ['-kt', keytab || '', principal];
+  async kinit(principal?: string, keytab?: string): Promise<void> {
+    const p = principal || vscode.workspace.getConfiguration('hdfs').get<string>('auth.kerberos.principal');
+    const k = keytab || vscode.workspace.getConfiguration('hdfs').get<string>('auth.kerberos.keytab');
+    if (!p) throw new Error('Kerberos principal not provided. Configure hdfs.auth.kerberos.principal or pass it.');
+    const args: string[] = [];
+    if (k) args.push('-kt', k);
+    args.push(p);
     await new Promise<void>((resolve, reject) => {
       execFile('kinit', args, (err, _stdout, stderr) => {
         if (err) reject(new Error(`kinit failed: ${stderr || err.message}`));

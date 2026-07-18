@@ -2,7 +2,7 @@
   "name": "vscode-hdfs",
   "displayName": "HDFS Explorer",
   "description": "Browse, view, and manage HDFS files and directories with CRUD operations and Kerberos authentication",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "nntk",
   "license": "MIT",
   "icon": "icon.png",
@@ -26,13 +26,15 @@
     "onCommand:hdfs.editConnection",
     "onCommand:hdfs.refresh",
     "onCommand:hdfs.createDirectory",
-
     "onCommand:hdfs.delete",
     "onCommand:hdfs.rename",
     "onCommand:hdfs.upload",
     "onCommand:hdfs.download",
     "onCommand:hdfs.openFile",
-    "onCommand:hdfs.kinit"
+    "onCommand:hdfs.kinit",
+    "onCommand:hdfs.goToPath",
+    "onCommand:hdfs.openSettings",
+    "onCommand:hdfs.openTaskView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -87,7 +89,6 @@
         "title": "HDFS: Create Directory...",
         "icon": "$(new-folder)"
       },
-
       {
         "command": "hdfs.delete",
         "title": "HDFS: Delete",
@@ -114,6 +115,20 @@
       {
         "command": "hdfs.kinit",
         "title": "HDFS: Initialize Kerberos Ticket"
+      },
+      {
+        "command": "hdfs.openSettings",
+        "title": "HDFS: Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "hdfs.goToPath",
+        "title": "HDFS: Go to Path..."
+      },
+      {
+        "command": "hdfs.openTaskView",
+        "title": "HDFS: Task View",
+        "icon": "$(checklist)"
       }
     ],
     "menus": {
@@ -124,9 +139,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "hdfs.refresh",
+          "command": "hdfs.openSettings",
           "when": "view == hdfsExplorer",
           "group": "navigation@2"
+        },
+        {
+          "command": "hdfs.refresh",
+          "when": "view == hdfsExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "hdfs.openTaskView",
+          "when": "view == hdfsExplorer",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -150,7 +175,6 @@
           "when": "view == hdfsExplorer && viewItem == hdfsDirectory",
           "group": "inline@1"
         },
-
         {
           "command": "hdfs.upload",
           "when": "view == hdfsExplorer && viewItem == hdfsDirectory",
