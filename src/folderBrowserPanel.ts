@@ -37,7 +37,7 @@ export class FolderBrowserPanel {
     FolderBrowserPanel.folderSvg = readSvg(path.join(resDir, 'folder.svg'));
     FolderBrowserPanel.fileSvg = readSvg(path.join(resDir, 'file.svg'));
     FolderBrowserPanel.backSvg = readSvg(path.join(actDir, 'back.svg')) || '&#x2190;';
-    const iconNames = ['refresh', 'newfolder', 'upload', 'bookmark', 'taskview', 'download', 'delete', 'info', 'rename', 'copypath', 'copyfilename'];
+    const iconNames = ['refresh', 'newfolder', 'upload', 'taskview', 'download', 'delete', 'info', 'rename', 'copypath', 'copyfilename'];
     for (const name of iconNames) {
       FolderBrowserPanel.actionIcons[name] = readSvg(path.join(actDir, name + '.svg'));
     }
@@ -68,6 +68,9 @@ export class FolderBrowserPanel {
   private refreshing = false;
   private searchPattern?: string;
   private jumpHistory?: JumpHistory;
+  private serviceUrl = '';
+  private sessionId = '';
+  private currentPath = '/';
 
   private constructor(
     column: vscode.ViewColumn,
@@ -87,6 +90,7 @@ export class FolderBrowserPanel {
     FolderBrowserPanel.loadIcons();
     const conn = connectionManager.getConnection(connectionId);
     this.connectionName = conn?.name || label;
+    if (conn) this.serviceUrl = conn.serviceUrl;
 
     const initPath = (prefix || '/').length > 15 ? '\u2026' + (prefix || '/').slice(-15) : (prefix || '/');
     this.panel = vscode.window.createWebviewPanel(
@@ -225,37 +229,7 @@ export class FolderBrowserPanel {
           TaskViewPanel.createOrShow();
           break;
         }
-        case 'toggleBookmark': {
-          if (!this.jumpHistory) break;
-          const connBM = this.connectionManager.getConnection(this.connectionId);
-          if (!connBM) break;
-          const itemBM = message.item as HdfsItem;
-          const nowBookmarked = this.jumpHistory.toggleBookmark(this.connectionId, itemBM.fullPath);
-          vscode.window.showInformationMessage(nowBookmarked
-            ? t('msg_bookmarkAdded', itemBM.pathSuffix)
-            : t('msg_bookmarkRemoved'));
-          break;
-        }
-        case 'showBookmarks': {
-          if (!this.jumpHistory) break;
-          const bms = this.jumpHistory.getBookmarks().filter(b => b.connectionId === this.connectionId);
-          if (bms.length === 0) {
-            vscode.window.showInformationMessage(t('msg_noBookmarks'));
-            break;
-          }
-          const picks = bms.map(b => ({
-            label: b.label || b.key.split('/').filter(Boolean).pop() || b.key,
-            description: b.key,
-            key: b.key,
-          }));
-          const pick = await vscode.window.showQuickPick(picks, {
-            title: t('msg_bookmarks'),
-            matchOnDescription: true,
-          });
-          if (!pick) break;
-          await this.goToPath(pick.key);
-          break;
-        }
+
       }
     });
   }
@@ -344,16 +318,27 @@ export class FolderBrowserPanel {
     return trimmed.substring(0, lastSlash + 1);
   }
 
+  private client: HdfsClient | null = null;
+
   private getClient(conn: HdfsConnection): HdfsClient {
-    return new HdfsClient({
-      serviceUrl: conn.serviceUrl,
-      sessionId: conn.sessionId || undefined,
-      coreSitePath: conn.coreSitePath || undefined,
-      hdfsSitePath: conn.hdfsSitePath || undefined,
-      krb5ConfPath: conn.krb5ConfPath || undefined,
-      keytabPath: conn.keytabPath || undefined,
-      principal: conn.principal || undefined,
-    });
+    if (!this.client) {
+      this.client = new HdfsClient({
+        serviceUrl: conn.serviceUrl,
+        sessionId: conn.sessionId || undefined,
+        coreSitePath: conn.coreSitePath || undefined,
+        hdfsSitePath: conn.hdfsSitePath || undefined,
+        krb5ConfPath: conn.krb5ConfPath || undefined,
+        keytabPath: conn.keytabPath || undefined,
+        principal: conn.principal || undefined,
+      });
+    }
+    return this.client;
+  }
+
+  private async ensureSession(client: HdfsClient): Promise<string> {
+    if (this.sessionId) return this.sessionId;
+    this.sessionId = await client.ensureSession();
+    return this.sessionId;
   }
 
   private async loadItems(): Promise<void> {
@@ -363,8 +348,10 @@ export class FolderBrowserPanel {
       const conn = this.connectionManager.getConnection(this.connectionId);
       if (!conn) return;
       const client = this.getClient(conn);
-      const hdfsPath = this.prefix || '/';
-      const files = await client.listStatus(hdfsPath);
+      this.currentPath = this.prefix || '/';
+      // ensure session is created so webview can upload directly
+      await this.ensureSession(client);
+      const files = await client.listStatus(this.currentPath);
       this.items = files
         .filter(f => !f.pathSuffix.startsWith('_') && !f.pathSuffix.startsWith('.'))
         .sort((a, b) => {
@@ -379,7 +366,7 @@ export class FolderBrowserPanel {
           permission: f.permission,
           owner: f.owner,
           group: f.group,
-          fullPath: hdfsPath === '/' ? '/' + f.pathSuffix : (hdfsPath.endsWith('/') ? hdfsPath : hdfsPath + '/') + f.pathSuffix,
+          fullPath: this.currentPath === '/' ? '/' + f.pathSuffix : (this.currentPath.endsWith('/') ? this.currentPath : this.currentPath + '/') + f.pathSuffix,
         }));
     } finally {
       this.loading = false;
@@ -393,8 +380,9 @@ export class FolderBrowserPanel {
       const conn = this.connectionManager.getConnection(this.connectionId);
       if (!conn) return;
       const client = this.getClient(conn);
-      const hdfsPath = this.prefix || '/';
-      const files = await client.listStatus(hdfsPath);
+      this.currentPath = this.prefix || '/';
+      await this.ensureSession(client);
+      const files = await client.listStatus(this.currentPath);
       const lower = this.searchPattern!.toLowerCase();
       this.items = files
         .filter(f => !f.pathSuffix.startsWith('_') && !f.pathSuffix.startsWith('.'))
@@ -411,7 +399,7 @@ export class FolderBrowserPanel {
           permission: f.permission,
           owner: f.owner,
           group: f.group,
-          fullPath: hdfsPath === '/' ? '/' + f.pathSuffix : (hdfsPath.endsWith('/') ? hdfsPath : hdfsPath + '/') + f.pathSuffix,
+          fullPath: this.currentPath === '/' ? '/' + f.pathSuffix : (this.currentPath.endsWith('/') ? this.currentPath : this.currentPath + '/') + f.pathSuffix,
         }));
     } finally {
       this.loading = false;
@@ -650,7 +638,7 @@ export class FolderBrowserPanel {
     }
   }
 
-  private async handleUploadDrop(files: { fileName: string; content: string }[]): Promise<void> {
+  private async handleUploadDrop(files: { fileName: string }[]): Promise<void> {
     const conn = this.connectionManager.getConnection(this.connectionId);
     if (!conn || !files || files.length === 0) return;
     const client = this.getClient(conn);
@@ -659,21 +647,15 @@ export class FolderBrowserPanel {
       { location: vscode.ProgressLocation.Window, title: t('msg_uploading', files.length) },
       async (progress) => {
         for (let i = 0; i < files.length; i++) {
-          const { fileName, content } = files[i];
-          const key = (this.prefix || '/') + fileName;
+          const { fileName } = files[i];
           progress.report({ message: `${i + 1}/${files.length} ${fileName}` });
+          const key = (this.prefix || '/') + fileName;
           const taskId = taskManager.add({
             type: 'upload', fileName, source: key,
             destination: key, connectionName: conn.name,
           });
-          try {
-            const buffer = Buffer.from(content, 'base64');
-            await client.writeFile(key, buffer);
-            taskManager.complete(taskId);
-            successCount++;
-          } catch (err: any) {
-            taskManager.fail(taskId, err.message);
-          }
+          taskManager.complete(taskId);
+          successCount++;
         }
       }
     );
@@ -689,12 +671,6 @@ export class FolderBrowserPanel {
     const displayPath = this.prefix || '/';
     this.panel.title = `${this.searchPattern ? this.searchPattern : displayPath} \u2014 ${this.connectionName}`;
     const records = this.getHistoryRecords?.() || [];
-    const bmKeys = new Set<string>();
-    if (this.jumpHistory) {
-      for (const bm of this.jumpHistory.getBookmarks()) {
-        if (bm.connectionId === this.connectionId) bmKeys.add(bm.key);
-      }
-    }
     this.panel.webview.html = getHtml(
       displayPath,
       this.items,
@@ -702,11 +678,12 @@ export class FolderBrowserPanel {
       this.searchPattern,
       records,
       this.connectionId,
-      bmKeys,
       FolderBrowserPanel.folderSvg,
       FolderBrowserPanel.fileSvg,
       FolderBrowserPanel.actionIcons,
       FolderBrowserPanel.backSvg,
+      this.serviceUrl,
+      this.sessionId,
     );
   }
 }
@@ -744,16 +721,16 @@ function getHtml(
   searchPattern?: string,
   historyRecords?: JumpRecord[],
   connectionId?: string,
-  bookmarkedKeys?: Set<string>,
   folderSvg = '',
   fileSvg = '',
   actionIcons: Record<string, string> = {},
   backSvg = '',
+  serviceUrl = '',
+  sessionId = '',
 ): string {
   const folderRows = items.filter(i => i.type === 'DIRECTORY').map(i => {
     const data = JSON.stringify(i).replace(/"/g, '&quot;');
-    const bm = bookmarkedKeys?.has(i.fullPath) ? ' data-bookmarked="1"' : '';
-    return `<div class="item folder" data-item="${data}"${bm}>
+    return `<div class="item folder" data-item="${data}">
       <input type="checkbox" class="item-cb">
       <span class="item-icon">${folderSvg}</span>
       <span class="item-name">${escapeHtml(i.pathSuffix)}</span>
@@ -771,8 +748,7 @@ function getHtml(
 
   const fileRows = items.filter(i => i.type === 'FILE').map(i => {
     const data = JSON.stringify(i).replace(/"/g, '&quot;');
-    const bm = bookmarkedKeys?.has(i.fullPath) ? ' data-bookmarked="1"' : '';
-    return `<div class="item file" data-item="${data}"${bm}>
+    return `<div class="item file" data-item="${data}">
       <input type="checkbox" class="item-cb">
       <span class="item-icon">${fileSvg}</span>
       <span class="item-name">${escapeHtml(i.pathSuffix)}</span>
@@ -932,7 +908,6 @@ body {
   <button class="icon-btn" id="refreshBtn" title="${t('wv_refresh')}" ${loading ? 'disabled' : ''}>${svgAction(actionIcons['refresh'], 'Refresh')}</button>
   <button class="icon-btn" id="newFolderBtn" title="${t('cmd_newFolder')}">${svgAction(actionIcons['newfolder'], 'New Folder')}</button>
   <button class="icon-btn" id="uploadBtn" title="${t('wv_upload')}">${svgAction(actionIcons['upload'], 'Upload')}</button>
-  <button class="icon-btn" id="bookmarkBtn" title="${t('msg_bookmarks')}">${svgAction(actionIcons['bookmark'], 'Bookmark')}</button>
   <button class="icon-btn" id="taskViewBtn" title="${t('cmd_openTaskView')}">${svgAction(actionIcons['taskview'], 'Tasks')}</button>
   <span class="header-sep"></span>
   <button class="icon-btn" id="dlBatchBtn" title="${t('wv_downloadSelected')}" disabled>${svgAction(actionIcons['download'], 'Download')}</button>
@@ -955,9 +930,7 @@ ${allRows}
 <script>
 const vscodeApi = acquireVsCodeApi();
 const l10n = ${JSON.stringify({
-    bookmark: t('wv_bookmark'), bookmarked: t('wv_bookmarked'),
-    unbookmark: t('wv_unbookmark'), bookmarks: t('msg_bookmarks'),
-    noBookmarks: t('msg_noBookmarks'), info: t('wv_info'),
+    info: t('wv_info'),
     rename: t('wv_rename'), delete: t('wv_delete'),
     copyPath: t('wv_copyPath'), copyFileName: t('wv_copyFileName'),
     download: t('wv_download'), newFolder: t('cmd_newFolder'),
@@ -1023,8 +996,6 @@ document.getElementById('refreshBtn')?.addEventListener('click', () => vscodeApi
 document.getElementById('newFolderBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'newFolder' }));
 document.getElementById('uploadBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'upload' }));
 document.getElementById('taskViewBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'openTaskView' }));
-document.getElementById('bookmarkBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'showBookmarks' }));
-
 const backBtn = document.getElementById('backBtn');
 if (backBtn && !backBtn.disabled) {
   backBtn.addEventListener('click', () => vscodeApi.postMessage({ type: 'navigateUp' }));
@@ -1143,17 +1114,33 @@ document.addEventListener('drop', async e => {
     for (const f of e.dataTransfer.files) { if (f.size > 0 && !f.name.startsWith('.')) files.push(f); }
   }
   if (files.length === 0) return;
-  const MAX_BASE64_SIZE = 5 * 1024 * 1024;
-  const smallFiles = [];
+  const uploadUrl = ${JSON.stringify(serviceUrl)};
+  const sid = ${JSON.stringify(sessionId)};
+  if (!uploadUrl || !sid) {
+    vscodeApi.postMessage({ type: 'showError', text: 'Session not ready. Try refreshing first.' });
+    return;
+  }
+  const prefix = ${JSON.stringify(prefix || '/')};
+  const uploaded = [];
   for (const file of files) {
-    if (file.size <= MAX_BASE64_SIZE) {
-      const dataUrl = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(file); });
-      smallFiles.push({ fileName: file.name, content: dataUrl.split(',')[1] });
-    } else {
-      vscodeApi.postMessage({ type: 'showError', text: 'File too large for drag-and-drop: ' + file.name + ' (max 5MB)' });
+    if (file.name.startsWith('.')) continue;
+    const body = new FormData();
+    body.append('file', file, file.name);
+    const hdfsPath = prefix === '/' ? '/' + file.name : prefix + file.name;
+    const url = uploadUrl + '/api/hdfs/write?sessionId=' + encodeURIComponent(sid) + '&path=' + encodeURIComponent(hdfsPath);
+    try {
+      const resp = await fetch(url, { method: 'POST', body });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => 'HTTP ' + resp.status);
+        vscodeApi.postMessage({ type: 'showError', text: 'Upload failed: ' + file.name + ' - ' + errText });
+      } else {
+        uploaded.push({ fileName: file.name });
+      }
+    } catch (e) {
+      vscodeApi.postMessage({ type: 'showError', text: 'Upload failed: ' + file.name + ' - ' + e.message });
     }
   }
-  if (smallFiles.length > 0) vscodeApi.postMessage({ type: 'uploadDrop', files: smallFiles });
+  if (uploaded.length > 0) vscodeApi.postMessage({ type: 'uploadDrop', files: uploaded });
 }, true);
 
 const ctxMenu = document.createElement('div');

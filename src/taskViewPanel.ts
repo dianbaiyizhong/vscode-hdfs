@@ -34,9 +34,7 @@ export class TaskViewPanel {
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       { enableScripts: true, retainContextWhenHidden: true }
     );
-    panel.iconPath = TaskViewPanel.extensionUri
-      ? vscode.Uri.joinPath(TaskViewPanel.extensionUri, 'resources', 'action-icons', 'checklist.svg')
-      : new vscode.ThemeIcon('checklist');
+    panel.iconPath = new vscode.ThemeIcon('checklist');
     TaskViewPanel.currentPanel = new TaskViewPanel(panel);
   }
 
