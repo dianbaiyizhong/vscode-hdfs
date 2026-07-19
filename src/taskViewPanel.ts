@@ -1,11 +1,28 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import { taskManager, Task } from './taskManager';
 import { t } from './i18n';
 
 export class TaskViewPanel {
   public static currentPanel: TaskViewPanel | undefined;
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _disposables: vscode.Disposable[] = [];
+  public static extensionUri: vscode.Uri | undefined;
+
+  private static _iconsLoaded = false;
+  private static uploadSvg = '';
+  private static downloadSvg = '';
+
+  private static loadIcons(): void {
+    if (TaskViewPanel._iconsLoaded) return;
+    TaskViewPanel._iconsLoaded = true;
+    const extPath = vscode.extensions.getExtension('nntk.vscode-hdfs')?.extensionPath;
+    if (!extPath) return;
+    const actDir = path.join(extPath, 'resources', 'action-icons');
+    try {
+      TaskViewPanel.uploadSvg = fs.readFileSync(path.join(actDir, 'upload.svg'), 'utf-8');
+      TaskViewPanel.downloadSvg = fs.readFileSync(path.join(actDir, 'download.svg'), 'utf-8');
+    } catch { /* ignore */ }
+  }
 
   static createOrShow(): void {
     if (TaskViewPanel.currentPanel) {
@@ -17,11 +34,17 @@ export class TaskViewPanel {
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       { enableScripts: true, retainContextWhenHidden: true }
     );
-    panel.iconPath = new vscode.ThemeIcon('checklist');
+    panel.iconPath = TaskViewPanel.extensionUri
+      ? vscode.Uri.joinPath(TaskViewPanel.extensionUri, 'resources', 'action-icons', 'checklist.svg')
+      : new vscode.ThemeIcon('checklist');
     TaskViewPanel.currentPanel = new TaskViewPanel(panel);
   }
 
+  private readonly _panel: vscode.WebviewPanel;
+  private readonly _disposables: vscode.Disposable[] = [];
+
   private constructor(panel: vscode.WebviewPanel) {
+    TaskViewPanel.loadIcons();
     this._panel = panel;
     panel.onDidDispose(() => this.dispose(), null, this._disposables);
     panel.webview.html = this._buildHtml();
@@ -83,9 +106,7 @@ th {
 }
 td { padding:8px 6px; border-bottom:1px solid var(--vscode-panel-border); vertical-align:middle; }
 .empty { text-align:center; padding:32px 8px; color:var(--vscode-descriptionForeground); }
-.type-icon { width:16px; height:16px; display:inline-block; text-align:center; font-size:14px; }
-.type-icon.up { color:var(--vscode-charts-blue); }
-.type-icon.down { color:var(--vscode-charts-green); }
+.type-icon svg { width:16px; height:16px; display:block; }
 .file-name { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .file-size { font-size:11px; color:var(--vscode-descriptionForeground); }
 .progress-wrap { width:120px; }
@@ -132,8 +153,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   }
 
   private _renderRow(t: Task): string {
-    const icon = t.type === 'upload' ? '&#x2B06;' : '&#x2B07;';
-    const iconCls = t.type === 'upload' ? 'up' : 'down';
+    const icon = t.type === 'upload' ? TaskViewPanel.uploadSvg : TaskViewPanel.downloadSvg;
     const statusLabel = this._statusLabel(t);
     const statusCls = t.status === 'in_progress' ? 'in-progress' : t.status;
     const sizeStr = t.size ? this._fmtSize(t.size) : '';
@@ -161,7 +181,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
     }
 
     return `<tr>
-      <td><span class="type-icon ${iconCls}">${icon}</span></td>
+      <td><span class="type-icon">${icon}</span></td>
       <td>
         <div class="file-name">${this._escape(t.fileName)}</div>
         ${sizeStr ? `<div class="file-size">${sizeStr}</div>` : ''}

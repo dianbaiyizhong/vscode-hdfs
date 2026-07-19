@@ -2,7 +2,7 @@
   "name": "vscode-hdfs",
   "displayName": "HDFS Explorer",
   "description": "Browse, view, and manage HDFS files and directories with CRUD operations and Kerberos authentication",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "nntk",
   "license": "MIT",
   "icon": "icon.png",
@@ -66,17 +66,17 @@
     "commands": [
       {
         "command": "hdfs.newConnection",
-        "title": "HDFS: New Connection...",
+        "title": "New Connection",
         "icon": "$(add)"
       },
       {
         "command": "hdfs.deleteConnection",
-        "title": "HDFS: Delete Connection",
+        "title": "Delete Connection",
         "icon": "$(trash)"
       },
       {
         "command": "hdfs.editConnection",
-        "title": "HDFS: Edit Connection...",
+        "title": "Edit Connection",
         "icon": "$(edit)"
       },
       {
@@ -86,26 +86,26 @@
       },
       {
         "command": "hdfs.createDirectory",
-        "title": "HDFS: Create Directory...",
+        "title": "New Folder",
         "icon": "$(new-folder)"
       },
       {
         "command": "hdfs.delete",
-        "title": "HDFS: Delete",
+        "title": "Delete",
         "icon": "$(trash)"
       },
       {
         "command": "hdfs.rename",
-        "title": "HDFS: Rename..."
+        "title": "Rename"
       },
       {
         "command": "hdfs.upload",
-        "title": "HDFS: Upload File...",
+        "title": "Upload File",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "hdfs.download",
-        "title": "HDFS: Download File..."
+        "title": "Download"
       },
       {
         "command": "hdfs.openFile",
@@ -114,20 +114,20 @@
       },
       {
         "command": "hdfs.kinit",
-        "title": "HDFS: Initialize Kerberos Ticket"
+        "title": "Kerberos Ticket"
       },
       {
         "command": "hdfs.openSettings",
-        "title": "HDFS: Settings",
+        "title": "Settings",
         "icon": "$(gear)"
       },
       {
         "command": "hdfs.goToPath",
-        "title": "HDFS: Go to Path..."
+        "title": "Go to Path"
       },
       {
         "command": "hdfs.openTaskView",
-        "title": "HDFS: Task View",
+        "title": "Task View",
         "icon": "$(checklist)"
       }
     ],
@@ -219,8 +219,11 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "kerberos": "^7.0.0"
   }
 }

@@ -280,6 +280,11 @@ function createClientFromConn(conn: HdfsConnection): HdfsClient {
     protocol: conn.protocol, host: conn.host, port: conn.port,
     authMethod: conn.authMethod, username: conn.username,
     curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
+    principal: conn.principal || undefined,
+    keytabPath: conn.keytabPath || undefined,
+    realm: conn.realm || undefined,
+    kdc: conn.kdc || undefined,
     insecure: conn.insecure,
+    delegationToken: conn.delegationToken || undefined,
   });
 }

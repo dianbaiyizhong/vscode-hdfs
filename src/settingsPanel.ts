@@ -1,10 +1,39 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ConnectionManager, HdfsConnection } from './connectionManager';
 import { HdfsClient } from './hdfsClient';
 import { t, isZh } from './i18n';
 
 export class SettingsPanel {
   public static currentPanel: SettingsPanel | undefined;
+  public static extensionUri: vscode.Uri | undefined;
+
+  private static _iconsLoaded = false;
+  private static gearSvg = '';
+  private static cloudSvg = '';
+  private static serverSvg = '';
+  private static editSvg = '';
+  private static deleteSvg = '';
+  private static backSvg = '';
+
+  private static loadIcons(): void {
+    if (SettingsPanel._iconsLoaded) return;
+    SettingsPanel._iconsLoaded = true;
+    const extPath = vscode.extensions.getExtension('nntk.vscode-hdfs')?.extensionPath;
+    if (!extPath) return;
+    const actDir = path.join(extPath, 'resources', 'action-icons');
+    SettingsPanel.gearSvg = readSvg(path.join(actDir, 'gear.svg'));
+    SettingsPanel.cloudSvg = readSvg(path.join(actDir, 'cloud.svg'));
+    SettingsPanel.serverSvg = readSvg(path.join(actDir, 'server.svg'));
+    SettingsPanel.editSvg = readSvg(path.join(actDir, 'rename.svg'));
+    SettingsPanel.deleteSvg = readSvg(path.join(actDir, 'delete.svg'));
+    SettingsPanel.backSvg = readSvg(path.join(actDir, 'back.svg'));
+  }
+
+  // MRS defaults
+  static readonly MRS_HTTP_PORT = 9870;
+  static readonly MRS_HTTPS_PORT = 9871;
 
   public static createOrShow(connectionManager: ConnectionManager, connectionId?: string): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
@@ -26,6 +55,7 @@ export class SettingsPanel {
 
   private constructor(column: vscode.ViewColumn, connectionManager: ConnectionManager, connectionId?: string) {
     this.connectionManager = connectionManager;
+    SettingsPanel.loadIcons();
 
     this.panel = vscode.window.createWebviewPanel(
       'hdfsSettings',
@@ -33,7 +63,9 @@ export class SettingsPanel {
       column,
       { enableScripts: true }
     );
-    this.panel.iconPath = new vscode.ThemeIcon('gear');
+    this.panel.iconPath = SettingsPanel.extensionUri
+      ? vscode.Uri.joinPath(SettingsPanel.extensionUri, 'resources', 'action-icons', 'gear.svg')
+      : new vscode.ThemeIcon('gear');
 
     if (connectionId) {
       this.editConnection(connectionId);
@@ -53,6 +85,20 @@ export class SettingsPanel {
         case 'add':
           this.editingId = undefined;
           this.formData = { protocol: 'http', port: 50070, authMethod: 'SIMPLE', insecure: false };
+          this.renderForm();
+          break;
+        case 'addMRS':
+          this.editingId = undefined;
+          this.formData = {
+            name: 'My MRS Cluster',
+            protocol: 'https',
+            port: SettingsPanel.MRS_HTTPS_PORT,
+            authMethod: 'KERBEROS',
+            username: '',
+            curlPath: 'curl',
+            insecure: true,
+            isMRS: true,
+          };
           this.renderForm();
           break;
         case 'edit':
@@ -94,11 +140,11 @@ export class SettingsPanel {
   }
 
   private render(): void {
-    this.panel.webview.html = getListHtml(this.connectionManager.connections);
+    this.panel.webview.html = getListHtml(this.connectionManager.connections, SettingsPanel.cloudSvg, SettingsPanel.serverSvg, SettingsPanel.gearSvg, SettingsPanel.editSvg, SettingsPanel.deleteSvg);
   }
 
   private renderForm(): void {
-    this.panel.webview.html = getFormHtml(this.formData, !!this.editingId);
+    this.panel.webview.html = getFormHtml(this.formData, !!this.editingId, SettingsPanel.backSvg);
   }
 
   private editConnection(connectionId: string): void {
@@ -125,7 +171,13 @@ export class SettingsPanel {
       authMethod: data.authMethod || 'SIMPLE',
       username: data.username || '',
       curlPath: data.curlPath || 'curl',
+      principal: data.principal || '',
+      keytabPath: data.keytabPath || '',
+      realm: data.realm || '',
+      kdc: data.kdc || '',
       insecure: data.insecure === true || data.insecure === 'true',
+      isMRS: data.isMRS === true || data.isMRS === 'true',
+      delegationToken: data.delegationToken || '',
     };
     if (this.editingId) {
       conn.id = this.editingId;
@@ -145,6 +197,11 @@ export class SettingsPanel {
     const protocol = data.protocol || 'http';
     const authMethod = data.authMethod || 'SIMPLE';
     const username = data.username || '';
+    const principal = data.principal || '';
+    const keytabPath = data.keytabPath || '';
+    const realm = data.realm || '';
+    const kdc = data.kdc || '';
+    const delegationToken = data.delegationToken || '';
     if (!host || !port) {
       vscode.window.showErrorMessage(t('val_endpointRequired'));
       return;
@@ -156,7 +213,9 @@ export class SettingsPanel {
           const client = new HdfsClient({
             protocol, host, port, authMethod, username,
             curlPath: data.curlPath || 'curl',
+            principal, keytabPath, realm, kdc,
             insecure: data.insecure === true || data.insecure === 'true',
+            delegationToken: delegationToken || undefined,
           });
           const ok = await client.testConnection();
           if (ok) {
@@ -172,31 +231,45 @@ export class SettingsPanel {
   }
 }
 
+function readSvg(p: string): string {
+  try {
+    return fs.readFileSync(p, 'utf-8');
+  } catch { return ''; }
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function getListHtml(connections: HdfsConnection[]): string {
+function getListHtml(connections: HdfsConnection[], cloudSvg: string, serverSvg: string, gearSvg: string, editSvg: string, deleteSvg: string): string {
   const rows = connections.length === 0
     ? `<div class="empty">${t('wv_settings_empty')}</div>`
     : connections.map(c => {
         const authTag = c.authMethod === 'KERBEROS'
           ? `<span class="proxy-tag" style="background:#7c3aed;">KERBEROS</span>`
+          : c.authMethod === 'CURL_KERBEROS'
+          ? `<span class="proxy-tag" style="background:#7c3aed;">CURL</span>`
+          : c.authMethod === 'TOKEN'
+          ? `<span class="proxy-tag" style="background:#0891b2;">TOKEN</span>`
           : `<span class="proxy-tag" style="background:#2563eb;">SIMPLE</span>`;
         const sslTag = c.protocol === 'https'
           ? `<span class="proxy-tag" style="background:#059669;">HTTPS</span>`
           : '';
+        const mrsTag = c.isMRS
+          ? `<span class="proxy-tag" style="background:#d97706;">MRS</span>`
+          : '';
+        const iconSvg = c.isMRS ? cloudSvg : serverSvg;
         return `<div class="conn-row" data-id="${c.id}">
           <div class="conn-info">
-            <span class="conn-icon">&#x1F5C4;</span>
+            <span class="conn-icon">${iconSvg}</span>
             <div class="conn-details">
-              <div class="conn-name">${escapeHtml(c.name)} ${authTag}${sslTag}</div>
+              <div class="conn-name">${escapeHtml(c.name)} ${mrsTag}${authTag}${sslTag}</div>
               <div class="conn-meta">${escapeHtml(c.host)}:${c.port}</div>
             </div>
           </div>
           <div class="conn-actions">
-            <button class="action-btn edit-btn" data-action="edit" title="${t('wv_settings_edit')}">&#x270F;</button>
-            <button class="action-btn delete-btn" data-action="delete" title="${t('wv_settings_delete')}">&#x1F5D1;</button>
+            <button class="action-btn edit-btn" data-action="edit" title="${t('wv_settings_edit')}">${editSvg}</button>
+            <button class="action-btn delete-btn" data-action="delete" title="${t('wv_settings_delete')}">${deleteSvg}</button>
           </div>
         </div>`;
       }).join('\n');
@@ -209,32 +282,42 @@ function getListHtml(connections: HdfsConnection[]): string {
 <style>
 body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:var(--vscode-font-size); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
 .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
-.header-title { font-size:18px; font-weight:600; }
+.header-title { display:flex; align-items:center; gap:8px; font-size:18px; font-weight:600; }
+.header-title svg { width:20px; height:20px; }
 .empty { text-align:center; margin-top:48px; color:var(--vscode-descriptionForeground); }
 .add-btn { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:6px 16px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .add-btn:hover { background:var(--vscode-button-hoverBackground); }
+.mrs-btn { background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); border:none; padding:6px 16px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); margin-left:8px; }
+.mrs-btn:hover { background:var(--vscode-button-secondaryHoverBackground); }
+.mrs-btn svg { width:16px; height:16px; vertical-align:middle; margin-right:4px; }
 .conn-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; margin-bottom:4px; border-radius:4px; border:1px solid var(--vscode-panel-border); }
 .conn-row:hover { background:var(--vscode-list-hoverBackground); }
 .conn-info { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
-.conn-icon { font-size:20px; }
+.conn-icon { display:flex; align-items:center; }
+.conn-icon svg { width:20px; height:20px; display:block; }
 .conn-details { flex:1; min-width:0; }
 .conn-name { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .conn-meta { font-size:12px; color:var(--vscode-descriptionForeground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 .conn-actions { display:flex; gap:6px; flex-shrink:0; }
-.action-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 8px; border-radius:3px; font-size:14px; opacity:0.7; transition:opacity 0.15s; }
+.action-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 8px; border-radius:3px; line-height:0; opacity:0.7; transition:opacity 0.15s; }
 .action-btn:hover { opacity:1; background:var(--vscode-list-hoverBackground); }
+.action-btn svg { width:16px; height:16px; display:block; }
 .proxy-tag { display:inline-block; font-size:10px; font-weight:600; padding:1px 5px; border-radius:3px; background:var(--vscode-button-background); color:var(--vscode-button-foreground); vertical-align:middle; margin-left:4px; }
 </style>
 </head>
 <body>
 <div class="header">
-  <span class="header-title">&#x2699; ${t('wv_settings_title')}</span>
-  <button class="add-btn" id="addBtn">+ ${t('wv_settings_add')}</button>
+  <span class="header-title">${gearSvg}${t('wv_settings_title')}</span>
+  <div>
+    <button class="add-btn" id="addBtn">+ ${t('wv_settings_add')}</button>
+    <button class="mrs-btn" id="mrsBtn">${cloudSvg}+MRS</button>
+  </div>
 </div>
 ${rows}
 <script>
 const vscodeApi = acquireVsCodeApi();
 document.getElementById('addBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'add' }));
+document.getElementById('mrsBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'addMRS' }));
 document.querySelectorAll('.edit-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const id = btn.closest('.conn-row').dataset.id;
@@ -252,7 +335,7 @@ document.querySelectorAll('.delete-btn').forEach(btn => {
 </html>`;
 }
 
-function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean): string {
+function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean, backSvg: string): string {
   const name = data.name || '';
   const protocol = data.protocol || 'http';
   const host = data.host || '';
@@ -260,7 +343,13 @@ function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean): string {
   const authMethod = data.authMethod || 'SIMPLE';
   const username = data.username || '';
   const curlPath = data.curlPath || 'curl';
+  const principal = data.principal || '';
+  const keytabPath = data.keytabPath || '';
+  const realm = data.realm || '';
+  const kdc = data.kdc || '';
   const insecure = data.insecure ?? false;
+  const isMRS = data.isMRS ?? false;
+  const delegationToken = data.delegationToken || '';
 
   return `<!DOCTYPE html>
 <html lang="${isZh() ? 'zh-CN' : 'en'}">
@@ -271,15 +360,19 @@ function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean): string {
 body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:var(--vscode-font-size); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
 .header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
 .header-title { font-size:18px; font-weight:600; }
-.back-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 10px; border-radius:3px; font-size:var(--vscode-font-size); color:var(--vscode-foreground); }
+.back-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 10px; border-radius:3px; line-height:0; color:var(--vscode-foreground); }
 .back-btn:hover { background:var(--vscode-list-hoverBackground); }
+.back-btn svg { width:18px; height:18px; display:block; }
 .field-group { margin-bottom:14px; }
 label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--vscode-descriptionForeground); }
-input, select { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--vscode-input-border); border-radius:2px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:var(--vscode-font-size); font-family:var(--vscode-font-family); }
-input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder); }
+input, select, textarea { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--vscode-input-border); border-radius:2px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:var(--vscode-font-size); font-family:var(--vscode-font-family); }
+input:focus, select:focus, textarea:focus { outline:none; border-color:var(--vscode-focusBorder); }
+textarea { resize:vertical; min-height:60px; }
 .hint { font-size:11px; color:var(--vscode-descriptionForeground); margin-top:2px; opacity:0.7; }
 .checkbox-row { display:flex; align-items:center; gap:8px; margin:14px 0; }
 .checkbox-row input { width:auto; }
+.checkbox-row label { margin:0;font-size:var(--vscode-font-size);cursor:pointer; }
+.mrs-badge { display:inline-block; font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; background:#d97706; color:#fff; margin-left:8px; }
 .actions { display:flex; gap:8px; margin-top:20px; }
 .btn-primary { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:8px 20px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .btn-primary:hover { background:var(--vscode-button-hoverBackground); }
@@ -291,8 +384,9 @@ input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder)
 </head>
 <body>
 <div class="header">
-  <button class="back-btn" id="backBtn">&#x2190; ${t('wv_settings_back')}</button>
+  <button class="back-btn" id="backBtn">${backSvg}</button>
   <span class="header-title">${isEdit ? t('wv_settings_edit_title') : t('wv_settings_add_title')}</span>
+  ${isMRS ? '<span class="mrs-badge">MRS</span>' : ''}
 </div>
 <form id="connForm">
   <div class="field-group">
@@ -311,7 +405,7 @@ input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder)
     <input type="text" id="host" value="${escapeHtml(host)}" placeholder="${t('prompt_host_placeholder')}" required>
   </div>
   <div class="field-group">
-    <label for="port">${t('prompt_port')}</label>
+    <label for="port">${t('prompt_port')} <span id="portHint" style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);">${isMRS ? '(MRS: 9870/9871)' : ''}</span></label>
     <input type="number" id="port" value="${port}" placeholder="${t('prompt_port_placeholder')}" required>
   </div>
   <div class="field-group">
@@ -319,20 +413,48 @@ input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder)
     <select id="authMethod">
       <option value="SIMPLE" ${authMethod === 'SIMPLE' ? 'selected' : ''}>${t('prompt_authMethod_simple')} — ${t('prompt_authMethod_simple_desc')}</option>
       <option value="KERBEROS" ${authMethod === 'KERBEROS' ? 'selected' : ''}>${t('prompt_authMethod_kerberos')} — ${t('prompt_authMethod_kerberos_desc')}</option>
+      <option value="CURL_KERBEROS" ${authMethod === 'CURL_KERBEROS' ? 'selected' : ''}>CURL_KERBEROS — ${t('prompt_authMethod_curlkerberos_desc')}</option>
+      <option value="TOKEN" ${authMethod === 'TOKEN' ? 'selected' : ''}>TOKEN — Delegation Token / Bearer token</option>
     </select>
   </div>
-  <div class="field-group" id="usernameGroup" style="${authMethod === 'KERBEROS' ? 'display:none;' : ''}">
+  <div class="field-group" id="usernameGroup" style="${authMethod === 'KERBEROS' || authMethod === 'CURL_KERBEROS' || authMethod === 'TOKEN' ? 'display:none;' : ''}">
     <label for="username">${t('prompt_username')}</label>
     <input type="text" id="username" value="${escapeHtml(username)}" placeholder="${t('prompt_username_placeholder')}">
   </div>
-  <div class="field-group" id="curlGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+  <div class="field-group" id="curlGroup" style="${authMethod === 'CURL_KERBEROS' ? '' : 'display:none;'}">
     <label for="curlPath">${t('prompt_curlPath')}</label>
     <input type="text" id="curlPath" value="${escapeHtml(curlPath)}" placeholder="${t('prompt_curlPath_placeholder')}">
   </div>
+  <div class="field-group" id="principalGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+    <label for="principal">${t('prompt_principal')}</label>
+    <input type="text" id="principal" value="${escapeHtml(principal)}" placeholder="${t('prompt_principal_placeholder')}">
+    <div class="hint">${t('prompt_principal_hint')}</div>
+  </div>
+  <div class="field-group" id="keytabGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+    <label for="keytabPath">${t('prompt_keytabPath')}</label>
+    <input type="text" id="keytabPath" value="${escapeHtml(keytabPath)}" placeholder="${t('prompt_keytabPath_placeholder')}">
+    <div class="hint">${t('prompt_keytabPath_hint')}</div>
+  </div>
+  <div class="field-group" id="realmGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+    <label for="realm">${t('prompt_realm')}</label>
+    <input type="text" id="realm" value="${escapeHtml(realm)}" placeholder="${t('prompt_realm_placeholder')}">
+    <div class="hint">${t('prompt_realm_hint')}</div>
+  </div>
+  <div class="field-group" id="kdcGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+    <label for="kdc">${t('prompt_kdc')}</label>
+    <input type="text" id="kdc" value="${escapeHtml(kdc)}" placeholder="${t('prompt_kdc_placeholder')}">
+    <div class="hint">${t('prompt_kdc_hint')}</div>
+  </div>
+  <div class="field-group" id="tokenGroup" style="${authMethod === 'TOKEN' ? '' : 'display:none;'}">
+    <label for="delegationToken">Delegation Token / Bearer Token</label>
+    <textarea id="delegationToken" placeholder="Paste delegation token here...">${escapeHtml(delegationToken)}</textarea>
+    <div class="hint">For MRS: get token via "curl --negotiate -u : 'https://host:9871/webhdfs/v1/?op=GETDELEGATIONTOKEN&user=hdfs'"</div>
+  </div>
   <div class="checkbox-row">
     <input type="checkbox" id="insecure" ${insecure ? 'checked' : ''}>
-    <label for="insecure" style="margin:0;font-size:var(--vscode-font-size);cursor:pointer;">${t('prompt_insecure')}</label>
+    <label for="insecure">${t('prompt_insecure')} ${isMRS ? '(MRS uses self-signed certs, recommend Yes)' : ''}</label>
   </div>
+  <input type="hidden" id="isMRS" value="${isMRS ? 'true' : 'false'}">
   <div class="actions">
     <button type="submit" class="btn-primary">${t('wv_settings_save')}</button>
     <button type="button" class="btn-test" id="testBtn">${t('wv_settings_test')}</button>
@@ -341,6 +463,10 @@ input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder)
 </form>
 <script>
 const vscodeApi = acquireVsCodeApi();
+const mrsDefaultHttp = ${SettingsPanel.MRS_HTTP_PORT};
+const mrsDefaultHttps = ${SettingsPanel.MRS_HTTPS_PORT};
+const isMRS = ${isMRS ? 'true' : 'false'};
+
 document.getElementById('backBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'cancel' }));
 document.getElementById('cancelBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'cancel' }));
 document.getElementById('testBtn').addEventListener('click', () => {
@@ -350,22 +476,49 @@ document.getElementById('connForm').addEventListener('submit', e => {
   e.preventDefault();
   vscodeApi.postMessage({ type: 'save', data: getFormData() });
 });
+document.getElementById('protocol').addEventListener('change', function() {
+  if (isMRS) {
+    document.getElementById('port').value = this.value === 'https' ? mrsDefaultHttps : mrsDefaultHttp;
+    document.getElementById('portHint').textContent = this.value === 'https' ? '(MRS: 9871)' : '(MRS: 9870)';
+  }
+});
 document.getElementById('authMethod').addEventListener('change', function() {
-  const isKerberos = this.value === 'KERBEROS';
-  document.getElementById('usernameGroup').style.display = isKerberos ? 'none' : '';
-  document.getElementById('curlGroup').style.display = isKerberos ? '' : 'none';
+  const v = this.value;
+  document.getElementById('usernameGroup').style.display = (v === 'KERBEROS' || v === 'CURL_KERBEROS' || v === 'TOKEN') ? 'none' : '';
+  document.getElementById('curlGroup').style.display = v === 'CURL_KERBEROS' ? '' : 'none';
+  document.getElementById('principalGroup').style.display = v === 'KERBEROS' ? '' : 'none';
+  document.getElementById('keytabGroup').style.display = v === 'KERBEROS' ? '' : 'none';
+  document.getElementById('realmGroup').style.display = v === 'KERBEROS' ? '' : 'none';
+  document.getElementById('kdcGroup').style.display = v === 'KERBEROS' ? '' : 'none';
+  document.getElementById('tokenGroup').style.display = v === 'TOKEN' ? '' : 'none';
+  if (v !== 'TOKEN') document.getElementById('delegationToken').value = '';
+  if (v !== 'CURL_KERBEROS') document.getElementById('curlPath').value = 'curl';
+  if (v !== 'KERBEROS') {
+    document.getElementById('principal').value = '';
+    document.getElementById('keytabPath').value = '';
+    document.getElementById('realm').value = '';
+    document.getElementById('kdc').value = '';
+  }
 });
 function getFormData() {
-  return {
+  const authMethod = document.getElementById('authMethod').value;
+  const data = {
     name: document.getElementById('name').value.trim(),
     protocol: document.getElementById('protocol').value,
     host: document.getElementById('host').value.trim(),
-    port: parseInt(document.getElementById('port').value) || 50070,
-    authMethod: document.getElementById('authMethod').value,
+    port: parseInt(document.getElementById('port').value) || (document.getElementById('protocol').value === 'https' ? (isMRS ? mrsDefaultHttps : 50470) : (isMRS ? mrsDefaultHttp : 50070)),
+    authMethod: authMethod,
     username: document.getElementById('username').value.trim(),
     curlPath: document.getElementById('curlPath').value.trim() || 'curl',
+    principal: document.getElementById('principal').value.trim(),
+    keytabPath: document.getElementById('keytabPath').value.trim(),
+    realm: document.getElementById('realm').value.trim(),
+    kdc: document.getElementById('kdc').value.trim(),
     insecure: document.getElementById('insecure').checked,
+    isMRS: isMRS,
   };
+  if (authMethod === 'TOKEN') data.delegationToken = document.getElementById('delegationToken').value.trim();
+  return data;
 }
 </script>
 </body>

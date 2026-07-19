@@ -20,6 +20,29 @@ interface HdfsItem {
 }
 
 export class FolderBrowserPanel {
+  public static extensionUri: vscode.Uri | undefined;
+  private static _iconsLoaded = false;
+  private static folderSvg = '';
+  private static fileSvg = '';
+  private static actionIcons: Record<string, string> = {};
+  private static backSvg = '';
+
+  private static loadIcons(): void {
+    if (FolderBrowserPanel._iconsLoaded) return;
+    FolderBrowserPanel._iconsLoaded = true;
+    const extPath = vscode.extensions.getExtension('nntk.vscode-hdfs')?.extensionPath;
+    if (!extPath) return;
+    const resDir = path.join(extPath, 'resources');
+    const actDir = path.join(resDir, 'action-icons');
+    FolderBrowserPanel.folderSvg = readSvg(path.join(resDir, 'folder.svg'));
+    FolderBrowserPanel.fileSvg = readSvg(path.join(resDir, 'file.svg'));
+    FolderBrowserPanel.backSvg = readSvg(path.join(actDir, 'back.svg')) || '&#x2190;';
+    const iconNames = ['refresh', 'newfolder', 'upload', 'bookmark', 'taskview', 'download', 'delete', 'info', 'rename', 'copypath', 'copyfilename'];
+    for (const name of iconNames) {
+      FolderBrowserPanel.actionIcons[name] = readSvg(path.join(actDir, name + '.svg'));
+    }
+  }
+
   public static create(
     connectionManager: ConnectionManager,
     connectionId: string,
@@ -61,6 +84,7 @@ export class FolderBrowserPanel {
     this.prefix = prefix;
     this.getHistoryRecords = getHistoryRecords;
     this.jumpHistory = jumpHistory;
+    FolderBrowserPanel.loadIcons();
     const conn = connectionManager.getConnection(connectionId);
     this.connectionName = conn?.name || label;
 
@@ -71,7 +95,9 @@ export class FolderBrowserPanel {
       column,
       { enableScripts: true }
     );
-    this.panel.iconPath = new vscode.ThemeIcon('window');
+    this.panel.iconPath = FolderBrowserPanel.extensionUri
+      ? vscode.Uri.joinPath(FolderBrowserPanel.extensionUri, 'resources', 'action-icons', 'window.svg')
+      : new vscode.ThemeIcon('window');
 
     if (!skipInitialLoad) {
       this.loadItems().then(() => this.render());
@@ -330,7 +356,12 @@ export class FolderBrowserPanel {
       authMethod: conn.authMethod,
       username: conn.username,
       curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
+      principal: conn.principal || undefined,
+      keytabPath: conn.keytabPath || undefined,
+      realm: conn.realm || undefined,
+      kdc: conn.kdc || undefined,
       insecure: conn.insecure,
+      delegationToken: conn.delegationToken || undefined,
     });
   }
 
@@ -661,7 +692,7 @@ export class FolderBrowserPanel {
 
   private render(): void {
     const displayPath = this.prefix || '/';
-    this.panel.title = `${this.searchPattern ? '🔍 ' + this.searchPattern : displayPath} — ${this.connectionName}`;
+    this.panel.title = `${this.searchPattern ? this.searchPattern : displayPath} — ${this.connectionName}`;
     const records = this.getHistoryRecords?.() || [];
     const bmKeys = new Set<string>();
     if (this.jumpHistory) {
@@ -677,8 +708,16 @@ export class FolderBrowserPanel {
       records,
       this.connectionId,
       bmKeys,
+      FolderBrowserPanel.folderSvg,
+      FolderBrowserPanel.fileSvg,
+      FolderBrowserPanel.actionIcons,
+      FolderBrowserPanel.backSvg,
     );
   }
+}
+
+function readSvg(p: string): string {
+  try { return fs.readFileSync(p, 'utf-8'); } catch { return ''; }
 }
 
 function formatSize(bytes?: number): string {
@@ -699,6 +738,10 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function svgAction(icon: string, alt: string): string {
+  return icon || `<!--${alt}-->`;
+}
+
 function getHtml(
   prefix: string,
   items: HdfsItem[],
@@ -707,22 +750,26 @@ function getHtml(
   historyRecords?: JumpRecord[],
   connectionId?: string,
   bookmarkedKeys?: Set<string>,
+  folderSvg = '',
+  fileSvg = '',
+  actionIcons: Record<string, string> = {},
+  backSvg = '',
 ): string {
   const folderRows = items.filter(i => i.type === 'DIRECTORY').map(i => {
     const data = JSON.stringify(i).replace(/"/g, '&quot;');
     const bm = bookmarkedKeys?.has(i.fullPath) ? ' data-bookmarked="1"' : '';
     return `<div class="item folder" data-item="${data}"${bm}>
       <input type="checkbox" class="item-cb">
-      <span class="item-icon">&#x1F4C1;</span>
+      <span class="item-icon">${folderSvg}</span>
       <span class="item-name">${escapeHtml(i.pathSuffix)}</span>
       <span class="item-meta"></span>
       <span class="item-date">${formatDate(new Date(i.modificationTime))}</span>
       <span class="item-actions">
-        <span class="action" data-action="info" title="${t('wv_info')}">&#x2139;</span>
-        <span class="action" data-action="rename" title="${t('wv_rename')}">&#x270F;</span>
-        <span class="action" data-action="delete" title="${t('wv_delete')}">&#x1F5D1;</span>
-        <span class="action" data-action="copyPath" title="${t('wv_copyPath')}">&#x1F4CB;</span>
-        <span class="action" data-action="copyFileName" title="${t('wv_copyFileName')}">&#x1F4C4;</span>
+        <span class="action" data-action="info" title="${t('wv_info')}">${svgAction(actionIcons['info'], 'Info')}</span>
+        <span class="action" data-action="rename" title="${t('wv_rename')}">${svgAction(actionIcons['rename'], 'Rename')}</span>
+        <span class="action" data-action="delete" title="${t('wv_delete')}">${svgAction(actionIcons['delete'], 'Delete')}</span>
+        <span class="action" data-action="copyPath" title="${t('wv_copyPath')}">${svgAction(actionIcons['copypath'], 'Copy Path')}</span>
+        <span class="action" data-action="copyFileName" title="${t('wv_copyFileName')}">${svgAction(actionIcons['copyfilename'], 'Copy File Name')}</span>
       </span>
     </div>`;
   }).join('');
@@ -732,17 +779,17 @@ function getHtml(
     const bm = bookmarkedKeys?.has(i.fullPath) ? ' data-bookmarked="1"' : '';
     return `<div class="item file" data-item="${data}"${bm}>
       <input type="checkbox" class="item-cb">
-      <span class="item-icon">&#x1F4C4;</span>
+      <span class="item-icon">${fileSvg}</span>
       <span class="item-name">${escapeHtml(i.pathSuffix)}</span>
       <span class="item-meta">${formatSize(i.length)}</span>
       <span class="item-date">${formatDate(new Date(i.modificationTime))}</span>
       <span class="item-actions">
-        <span class="action" data-action="info" title="${t('wv_info')}">&#x2139;</span>
-        <span class="action" data-action="rename" title="${t('wv_rename')}">&#x270F;</span>
-        <span class="action" data-action="download" title="${t('wv_download')}">&#x2B07;</span>
-        <span class="action" data-action="delete" title="${t('wv_delete')}">&#x1F5D1;</span>
-        <span class="action" data-action="copyPath" title="${t('wv_copyPath')}">&#x1F4CB;</span>
-        <span class="action" data-action="copyFileName" title="${t('wv_copyFileName')}">&#x1F4C4;</span>
+        <span class="action" data-action="info" title="${t('wv_info')}">${svgAction(actionIcons['info'], 'Info')}</span>
+        <span class="action" data-action="rename" title="${t('wv_rename')}">${svgAction(actionIcons['rename'], 'Rename')}</span>
+        <span class="action" data-action="download" title="${t('wv_download')}">${svgAction(actionIcons['download'], 'Download')}</span>
+        <span class="action" data-action="delete" title="${t('wv_delete')}">${svgAction(actionIcons['delete'], 'Delete')}</span>
+        <span class="action" data-action="copyPath" title="${t('wv_copyPath')}">${svgAction(actionIcons['copypath'], 'Copy Path')}</span>
+        <span class="action" data-action="copyFileName" title="${t('wv_copyFileName')}">${svgAction(actionIcons['copyfilename'], 'Copy File Name')}</span>
       </span>
     </div>`;
   }).join('');
@@ -775,7 +822,7 @@ body {
 }
 .back-btn {
   background: none; border: none; color: var(--vscode-textLink-foreground);
-  cursor: pointer; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; font-size: 16px;
+  cursor: pointer; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center;
 }
 .back-btn:hover { background: var(--vscode-list-hoverBackground); }
 .back-btn:disabled { opacity: 0.3; cursor: default; }
@@ -818,7 +865,8 @@ body {
 .item.selected { background: var(--vscode-list-inactiveSelectionBackground); }
 .item.folder { cursor: pointer; }
 .item-cb { width: 14px; height: 14px; cursor: pointer; accent-color: var(--vscode-focusBorder); }
-.item-icon { font-size: 15px; text-align: center; display: flex; align-items: center; justify-content: center; }
+.item-icon { width:20px; height:20px; display:flex; align-items:center; justify-content:center; }
+.item-icon svg { width:20px; height:20px; }
 .item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-meta { font-size: 11px; color: var(--vscode-descriptionForeground); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-date { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -827,8 +875,11 @@ body {
 .action {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: 3px; cursor: pointer;
-  font-size: 14px; opacity: 0.7; transition: opacity 0.1s, background 0.1s; position: relative;
+  line-height:0; opacity: 0.7; transition: opacity 0.1s, background 0.1s; position: relative;
 }
+.action svg { width:16px; height:16px; }
+.icon-btn svg { width:18px; height:18px; display:block; }
+.back-btn svg { width:18px; height:18px; display:block; }
 .action:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 .action::after {
   content: attr(title); position: absolute; bottom: -28px; left: 50%;
@@ -874,16 +925,16 @@ body {
 <div class="drag-overlay" id="dragOverlay">${t('wv_dropUpload')}</div>
 <div class="top-section">
 <div class="header">
-  <button class="back-btn" id="backBtn" ${!prefix || prefix === '/' ? 'disabled' : ''}>&#x2190;</button>
+  <button class="back-btn" id="backBtn" ${!prefix || prefix === '/' ? 'disabled' : ''}>${backSvg}</button>
   <input class="path-input" id="pathInput" value="${escapeHtml(prefix)}" title="${t('wv_pathInputTitle')}" autofocus>
-  <button class="icon-btn" id="refreshBtn" title="${t('wv_refresh')}" ${loading ? 'disabled' : ''}>&#x21BB;</button>
-  <button class="icon-btn" id="newFolderBtn" title="${t('cmd_newFolder')}">&#x1F4C1;</button>
-  <button class="icon-btn" id="uploadBtn" title="${t('wv_upload')}">&#x2B06;</button>
-  <button class="icon-btn" id="bookmarkBtn" title="${t('msg_bookmarks')}">&#x2B50;</button>
-  <button class="icon-btn" id="taskViewBtn" title="${t('cmd_openTaskView')}">&#x2630;</button>
+  <button class="icon-btn" id="refreshBtn" title="${t('wv_refresh')}" ${loading ? 'disabled' : ''}>${svgAction(actionIcons['refresh'], 'Refresh')}</button>
+  <button class="icon-btn" id="newFolderBtn" title="${t('cmd_newFolder')}">${svgAction(actionIcons['newfolder'], 'New Folder')}</button>
+  <button class="icon-btn" id="uploadBtn" title="${t('wv_upload')}">${svgAction(actionIcons['upload'], 'Upload')}</button>
+  <button class="icon-btn" id="bookmarkBtn" title="${t('msg_bookmarks')}">${svgAction(actionIcons['bookmark'], 'Bookmark')}</button>
+  <button class="icon-btn" id="taskViewBtn" title="${t('cmd_openTaskView')}">${svgAction(actionIcons['taskview'], 'Tasks')}</button>
   <span class="header-sep"></span>
-  <button class="icon-btn" id="dlBatchBtn" title="${t('wv_downloadSelected')}" disabled>&#x2B07;</button>
-  <button class="icon-btn" id="delBatchBtn" title="${t('wv_deleteSelected')}" disabled>&#x1F5D1;</button>
+  <button class="icon-btn" id="dlBatchBtn" title="${t('wv_downloadSelected')}" disabled>${svgAction(actionIcons['download'], 'Download')}</button>
+  <button class="icon-btn" id="delBatchBtn" title="${t('wv_deleteSelected')}" disabled>${svgAction(actionIcons['delete'], 'Delete')}</button>
   <div class="history-dropdown" id="historyDropdown"></div>
 </div>
 <input class="filter-input" id="filterInput" type="text" placeholder="${t('wv_filterPlaceholder')}" value="${searchPattern ? escapeHtml(searchPattern) : ''}"${searchPattern ? ' data-searching="1"' : ''} autocomplete="off">

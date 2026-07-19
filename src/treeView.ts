@@ -8,14 +8,21 @@ export class HdfsTreeItem extends vscode.TreeItem {
     public readonly connectionName: string,
     host: string,
     port: number,
-    authMethod: string
+    authMethod: string,
+    public readonly isMRS?: boolean,
   ) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.id = connectionId;
     this.contextValue = 'hdfsConnection';
-    this.tooltip = `${connectionName}\n${host}:${port}\nAuth: ${authMethod}`;
-    this.description = `${host}:${port}`;
-    this.iconPath = new vscode.ThemeIcon('server');
+    const mrsTag = isMRS ? ' [MRS]' : '';
+    this.tooltip = `${connectionName}${mrsTag}\n${host}:${port}\nAuth: ${authMethod}`;
+    this.description = `${host}:${port}${mrsTag}`;
+    const extUri = HdfsTreeDataProvider.extensionUri;
+    if (extUri) {
+      this.iconPath = isMRS
+        ? vscode.Uri.joinPath(extUri, 'resources', 'action-icons', 'cloud.svg')
+        : vscode.Uri.joinPath(extUri, 'resources', 'action-icons', 'server.svg');
+    }
     this.command = {
       command: 'hdfs.openConnection',
       title: '',
@@ -26,12 +33,14 @@ export class HdfsTreeItem extends vscode.TreeItem {
 
 export class HdfsTreeDataProvider implements vscode.TreeDataProvider<HdfsTreeItem> {
   static connectionManager: ConnectionManager | undefined;
+  static extensionUri: vscode.Uri | undefined;
 
   private _onDidChangeTreeData = new vscode.EventEmitter<HdfsTreeItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private connectionManager: ConnectionManager) {
+  constructor(private connectionManager: ConnectionManager, extensionUri: vscode.Uri) {
     HdfsTreeDataProvider.connectionManager = connectionManager;
+    HdfsTreeDataProvider.extensionUri = extensionUri;
     connectionManager.onDidChange(() => this.refresh());
   }
 
@@ -56,7 +65,7 @@ export class HdfsTreeDataProvider implements vscode.TreeDataProvider<HdfsTreeIte
 
   private getConnectionItems(): HdfsTreeItem[] {
     return this.connectionManager.connections.map((conn) =>
-      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.host, conn.port, conn.authMethod)
+      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.host, conn.port, conn.authMethod, conn.isMRS)
     );
   }
 }

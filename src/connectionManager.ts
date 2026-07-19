@@ -1,15 +1,23 @@
 import * as vscode from 'vscode';
 
+export type AuthMethod = 'SIMPLE' | 'KERBEROS' | 'CURL_KERBEROS' | 'TOKEN';
+
 export interface HdfsConnection {
   id: string;
   name: string;
   protocol: string;
   host: string;
   port: number;
-  authMethod: 'SIMPLE' | 'KERBEROS';
+  authMethod: AuthMethod;
   username: string;
   curlPath: string;
   insecure: boolean;
+  isMRS?: boolean;
+  delegationToken?: string;
+  principal?: string;
+  keytabPath?: string;
+  realm?: string;
+  kdc?: string;
 }
 
 const STORAGE_KEY = 'hdfsConnections';

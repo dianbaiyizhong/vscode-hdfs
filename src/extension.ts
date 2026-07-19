@@ -7,6 +7,9 @@ import { HdfsClient } from './hdfsClient';
 import { registerCommands } from './commands';
 import { JumpHistory } from './jumpHistory';
 import { taskManager } from './taskManager';
+import { SettingsPanel } from './settingsPanel';
+import { FolderBrowserPanel } from './folderBrowserPanel';
+import { TaskViewPanel } from './taskViewPanel';
 import { initI18n } from './i18n';
 
 let treeProvider: HdfsTreeDataProvider;
@@ -15,7 +18,10 @@ export function activate(context: vscode.ExtensionContext): void {
   initI18n();
 
   const connectionManager = new ConnectionManager(context);
-  treeProvider = new HdfsTreeDataProvider(connectionManager);
+  treeProvider = new HdfsTreeDataProvider(connectionManager, context.extensionUri);
+  SettingsPanel.extensionUri = context.extensionUri;
+  FolderBrowserPanel.extensionUri = context.extensionUri;
+  TaskViewPanel.extensionUri = context.extensionUri;
   const jumpHistory = new JumpHistory(context.globalState);
   taskManager.init(context.globalState);
 
@@ -62,7 +68,12 @@ export function activate(context: vscode.ExtensionContext): void {
           protocol: conn.protocol, host: conn.host, port: conn.port,
           authMethod: conn.authMethod, username: conn.username,
           curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
+          principal: conn.principal || undefined,
+          keytabPath: conn.keytabPath || undefined,
+          realm: conn.realm || undefined,
+          kdc: conn.kdc || undefined,
           insecure: conn.insecure,
+          delegationToken: conn.delegationToken || undefined,
         });
         const destDir = '/';
         await vscode.window.withProgress(
@@ -101,7 +112,12 @@ export function activate(context: vscode.ExtensionContext): void {
           protocol: conn.protocol, host: conn.host, port: conn.port,
           authMethod: conn.authMethod, username: conn.username,
           curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
+          principal: conn.principal || undefined,
+          keytabPath: conn.keytabPath || undefined,
+          realm: conn.realm || undefined,
+          kdc: conn.kdc || undefined,
           insecure: conn.insecure,
+          delegationToken: conn.delegationToken || undefined,
         });
         const buf = await client.readFile(filePath);
         return buf.toString('utf-8');
