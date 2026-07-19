@@ -3,3 +3,7 @@ node_modules/
 *.vsix
 .idea
 .vscode
+hdfs-service/target/
+hdfs-service/*.iml
+hdfs-service/.idea/
+*.jar

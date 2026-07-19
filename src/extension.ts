@@ -65,15 +65,13 @@ export function activate(context: vscode.ExtensionContext): void {
         if (uploads.length === 0) return;
 
         const client = new HdfsClient({
-          protocol: conn.protocol, host: conn.host, port: conn.port,
-          authMethod: conn.authMethod, username: conn.username,
-          curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
-          principal: conn.principal || undefined,
+          serviceUrl: conn.serviceUrl,
+          sessionId: conn.sessionId || undefined,
+          coreSitePath: conn.coreSitePath || undefined,
+          hdfsSitePath: conn.hdfsSitePath || undefined,
+          krb5ConfPath: conn.krb5ConfPath || undefined,
           keytabPath: conn.keytabPath || undefined,
-          realm: conn.realm || undefined,
-          kdc: conn.kdc || undefined,
-          insecure: conn.insecure,
-          delegationToken: conn.delegationToken || undefined,
+          principal: conn.principal || undefined,
         });
         const destDir = '/';
         await vscode.window.withProgress(
@@ -109,15 +107,13 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!conn) return '// Connection not found: ' + connId;
       try {
         const client = new HdfsClient({
-          protocol: conn.protocol, host: conn.host, port: conn.port,
-          authMethod: conn.authMethod, username: conn.username,
-          curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
-          principal: conn.principal || undefined,
+          serviceUrl: conn.serviceUrl,
+          sessionId: conn.sessionId || undefined,
+          coreSitePath: conn.coreSitePath || undefined,
+          hdfsSitePath: conn.hdfsSitePath || undefined,
+          krb5ConfPath: conn.krb5ConfPath || undefined,
           keytabPath: conn.keytabPath || undefined,
-          realm: conn.realm || undefined,
-          kdc: conn.kdc || undefined,
-          insecure: conn.insecure,
-          delegationToken: conn.delegationToken || undefined,
+          principal: conn.principal || undefined,
         });
         const buf = await client.readFile(filePath);
         return buf.toString('utf-8');

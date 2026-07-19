@@ -6,15 +6,14 @@ export class HdfsTreeItem extends vscode.TreeItem {
     public readonly connectionId: string,
     label: string,
     public readonly connectionName: string,
-    host: string,
-    port: number,
+    serviceUrl: string,
     authMethod: string,
   ) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.id = connectionId;
     this.contextValue = 'hdfsConnection';
-    this.tooltip = `${connectionName}\n${host}:${port}\nAuth: ${authMethod}`;
-    this.description = `${host}:${port}`;
+    this.tooltip = `${connectionName}\n${serviceUrl}\nAuth: ${authMethod}`;
+    this.description = serviceUrl;
     this.iconPath = new vscode.ThemeIcon('cloud');
     this.command = {
       command: 'hdfs.openConnection',
@@ -58,7 +57,7 @@ export class HdfsTreeDataProvider implements vscode.TreeDataProvider<HdfsTreeIte
 
   private getConnectionItems(): HdfsTreeItem[] {
     return this.connectionManager.connections.map((conn) =>
-      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.host, conn.port, conn.authMethod)
+      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.serviceUrl, conn.authMethod)
     );
   }
 }

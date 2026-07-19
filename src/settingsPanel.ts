@@ -68,7 +68,7 @@ export class SettingsPanel {
           break;
         case 'add':
           this.editingId = undefined;
-          this.formData = { protocol: 'http', port: 50070, authMethod: 'SIMPLE', insecure: false };
+          this.formData = { authMethod: 'SIMPLE' };
           this.renderForm();
           break;
         case 'edit':
@@ -100,6 +100,12 @@ export class SettingsPanel {
         case 'test':
           await this.handleTest(message.data);
           break;
+        case 'browseFile':
+          const result = await this.handleBrowseFile();
+          if (result) {
+            this.panel.webview.postMessage({ type: 'fileSelected', path: result });
+          }
+          break;
       }
     });
   }
@@ -128,25 +134,20 @@ export class SettingsPanel {
 
   private async handleSave(data: any): Promise<void> {
     if (!data) return;
-    if (!data.name || !data.host || !data.port) {
+    if (!data.name || !data.serviceUrl) {
       vscode.window.showErrorMessage(t('val_required'));
       return;
     }
     const conn: HdfsConnection = {
       id: this.editingId || '',
       name: data.name,
-      protocol: data.protocol || 'http',
-      host: data.host,
-      port: parseInt(data.port) || 50070,
+      serviceUrl: data.serviceUrl.replace(/\/+$/, ''),
       authMethod: data.authMethod || 'SIMPLE',
-      username: data.username || '',
-      curlPath: data.curlPath || 'curl',
-      principal: data.principal || '',
-      keytabPath: data.keytabPath || '',
-      realm: data.realm || '',
-      kdc: data.kdc || '',
-      insecure: data.insecure === true || data.insecure === 'true',
-      delegationToken: data.delegationToken || '',
+      principal: data.principal || undefined,
+      coreSitePath: data.coreSitePath || undefined,
+      hdfsSitePath: data.hdfsSitePath || undefined,
+      krb5ConfPath: data.krb5ConfPath || undefined,
+      keytabPath: data.keytabPath || undefined,
     };
     if (this.editingId) {
       conn.id = this.editingId;
@@ -161,17 +162,8 @@ export class SettingsPanel {
 
   private async handleTest(data: any): Promise<void> {
     if (!data) return;
-    const host = data.host || '';
-    const port = parseInt(data.port) || 50070;
-    const protocol = data.protocol || 'http';
-    const authMethod = data.authMethod || 'SIMPLE';
-    const username = data.username || '';
-    const principal = data.principal || '';
-    const keytabPath = data.keytabPath || '';
-    const realm = data.realm || '';
-    const kdc = data.kdc || '';
-    const delegationToken = data.delegationToken || '';
-    if (!host || !port) {
+    const serviceUrl = (data.serviceUrl || '').replace(/\/+$/, '');
+    if (!serviceUrl) {
       vscode.window.showErrorMessage(t('val_endpointRequired'));
       return;
     }
@@ -180,15 +172,16 @@ export class SettingsPanel {
       async () => {
         try {
           const client = new HdfsClient({
-            protocol, host, port, authMethod, username,
-            curlPath: data.curlPath || 'curl',
-            principal, keytabPath, realm, kdc,
-            insecure: data.insecure === true || data.insecure === 'true',
-            delegationToken: delegationToken || undefined,
+            serviceUrl,
+            coreSitePath: data.coreSitePath || undefined,
+            hdfsSitePath: data.hdfsSitePath || undefined,
+            krb5ConfPath: data.krb5ConfPath || undefined,
+            keytabPath: data.keytabPath || undefined,
+            principal: data.principal || undefined,
           });
           const ok = await client.testConnection();
           if (ok) {
-            vscode.window.showInformationMessage(t('msg_connected', host));
+            vscode.window.showInformationMessage(t('msg_connected', serviceUrl));
           } else {
             vscode.window.showErrorMessage(t('msg_connectionFailed', 'Connection test returned false'));
           }
@@ -197,6 +190,19 @@ export class SettingsPanel {
         }
       }
     );
+  }
+
+  private async handleBrowseFile(): Promise<string | undefined> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      canSelectFiles: true,
+      canSelectFolders: false,
+      title: t('wv_settings_selectFile'),
+    });
+    if (uris && uris.length > 0) {
+      return uris[0].fsPath;
+    }
+    return undefined;
   }
 }
 
@@ -216,20 +222,13 @@ function getListHtml(connections: HdfsConnection[]): string {
     : connections.map(c => {
         const authTag = c.authMethod === 'KERBEROS'
           ? `<span class="proxy-tag" style="background:#7c3aed;">KERBEROS</span>`
-          : c.authMethod === 'CURL_KERBEROS'
-          ? `<span class="proxy-tag" style="background:#7c3aed;">CURL</span>`
-          : c.authMethod === 'TOKEN'
-          ? `<span class="proxy-tag" style="background:#0891b2;">TOKEN</span>`
           : `<span class="proxy-tag" style="background:#2563eb;">SIMPLE</span>`;
-        const sslTag = c.protocol === 'https'
-          ? `<span class="proxy-tag" style="background:#059669;">HTTPS</span>`
-          : '';
         return `<div class="conn-row" data-id="${c.id}">
           <div class="conn-info">
             <span class="conn-icon">☁️</span>
             <div class="conn-details">
-              <div class="conn-name">${escapeHtml(c.name)} ${authTag}${sslTag}</div>
-              <div class="conn-meta">${escapeHtml(c.host)}:${c.port}</div>
+              <div class="conn-name">${escapeHtml(c.name)} ${authTag}</div>
+              <div class="conn-meta">${escapeHtml(c.serviceUrl)}</div>
             </div>
           </div>
           <div class="conn-actions">
@@ -294,18 +293,13 @@ document.querySelectorAll('.delete-btn').forEach(btn => {
 
 function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean, backSvg: string): string {
   const name = data.name || '';
-  const protocol = data.protocol || 'http';
-  const host = data.host || '';
-  const port = data.port ?? 50070;
+  const serviceUrl = data.serviceUrl || '';
   const authMethod = data.authMethod || 'SIMPLE';
-  const username = data.username || '';
-  const curlPath = data.curlPath || 'curl';
   const principal = data.principal || '';
+  const coreSitePath = data.coreSitePath || '';
+  const hdfsSitePath = data.hdfsSitePath || '';
+  const krb5ConfPath = data.krb5ConfPath || '';
   const keytabPath = data.keytabPath || '';
-  const realm = data.realm || '';
-  const kdc = data.kdc || '';
-  const insecure = data.insecure ?? false;
-  const delegationToken = data.delegationToken || '';
 
   return `<!DOCTYPE html>
 <html lang="${isZh() ? 'zh-CN' : 'en'}">
@@ -321,13 +315,13 @@ body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:
 .back-btn svg { width:18px; height:18px; display:block; }
 .field-group { margin-bottom:14px; }
 label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--vscode-descriptionForeground); }
-input, select, textarea { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--vscode-input-border); border-radius:2px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:var(--vscode-font-size); font-family:var(--vscode-font-family); }
-input:focus, select:focus, textarea:focus { outline:none; border-color:var(--vscode-focusBorder); }
-textarea { resize:vertical; min-height:60px; }
+input, select { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--vscode-input-border); border-radius:2px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:var(--vscode-font-size); font-family:var(--vscode-font-family); }
+input:focus, select:focus { outline:none; border-color:var(--vscode-focusBorder); }
 .hint { font-size:11px; color:var(--vscode-descriptionForeground); margin-top:2px; opacity:0.7; }
-.checkbox-row { display:flex; align-items:center; gap:8px; margin:14px 0; }
-.checkbox-row input { width:auto; }
-.checkbox-row label { margin:0;font-size:var(--vscode-font-size);cursor:pointer; }
+.file-row { display:flex; gap:8px; align-items:center; }
+.file-row input { flex:1; }
+.file-row .browse-btn { flex-shrink:0; background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); border:none; padding:6px 12px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); white-space:nowrap; }
+.file-row .browse-btn:hover { background:var(--vscode-button-secondaryHoverBackground); }
 .actions { display:flex; gap:8px; margin-top:20px; }
 .btn-primary { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:8px 20px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .btn-primary:hover { background:var(--vscode-button-hoverBackground); }
@@ -348,65 +342,49 @@ textarea { resize:vertical; min-height:60px; }
     <input type="text" id="name" value="${escapeHtml(name)}" placeholder="${t('prompt_connectionName_placeholder')}" required>
   </div>
   <div class="field-group">
-    <label for="protocol">${t('prompt_protocol')}</label>
-    <select id="protocol">
-      <option value="http" ${protocol === 'http' ? 'selected' : ''}>${t('prompt_protocol_http')} — ${t('prompt_protocol_http_desc')}</option>
-      <option value="https" ${protocol === 'https' ? 'selected' : ''}>${t('prompt_protocol_https')} — ${t('prompt_protocol_https_desc')}</option>
-    </select>
-  </div>
-  <div class="field-group">
-    <label for="host">${t('prompt_host')}</label>
-    <input type="text" id="host" value="${escapeHtml(host)}" placeholder="${t('prompt_host_placeholder')}" required>
-  </div>
-  <div class="field-group">
-    <label for="port">${t('prompt_port')} <span id="portHint" style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);"></span></label>
-    <input type="number" id="port" value="${port}" placeholder="${t('prompt_port_placeholder')}" required>
+    <label for="serviceUrl">Service URL</label>
+    <input type="text" id="serviceUrl" value="${escapeHtml(serviceUrl)}" placeholder="http://localhost:8899" required>
+    <div class="hint">${t('prompt_serviceUrl_hint')}</div>
   </div>
   <div class="field-group">
     <label for="authMethod">${t('prompt_authMethod')}</label>
     <select id="authMethod">
       <option value="SIMPLE" ${authMethod === 'SIMPLE' ? 'selected' : ''}>${t('prompt_authMethod_simple')} — ${t('prompt_authMethod_simple_desc')}</option>
       <option value="KERBEROS" ${authMethod === 'KERBEROS' ? 'selected' : ''}>${t('prompt_authMethod_kerberos')} — ${t('prompt_authMethod_kerberos_desc')}</option>
-      <option value="CURL_KERBEROS" ${authMethod === 'CURL_KERBEROS' ? 'selected' : ''}>CURL_KERBEROS — ${t('prompt_authMethod_curlkerberos_desc')}</option>
-      <option value="TOKEN" ${authMethod === 'TOKEN' ? 'selected' : ''}>TOKEN — Delegation Token / Bearer token</option>
     </select>
-  </div>
-  <div class="field-group" id="usernameGroup" style="${authMethod === 'KERBEROS' || authMethod === 'CURL_KERBEROS' || authMethod === 'TOKEN' ? 'display:none;' : ''}">
-    <label for="username">${t('prompt_username')}</label>
-    <input type="text" id="username" value="${escapeHtml(username)}" placeholder="${t('prompt_username_placeholder')}">
-  </div>
-  <div class="field-group" id="curlGroup" style="${authMethod === 'CURL_KERBEROS' ? '' : 'display:none;'}">
-    <label for="curlPath">${t('prompt_curlPath')}</label>
-    <input type="text" id="curlPath" value="${escapeHtml(curlPath)}" placeholder="${t('prompt_curlPath_placeholder')}">
   </div>
   <div class="field-group" id="principalGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
     <label for="principal">${t('prompt_principal')}</label>
     <input type="text" id="principal" value="${escapeHtml(principal)}" placeholder="${t('prompt_principal_placeholder')}">
     <div class="hint">${t('prompt_principal_hint')}</div>
   </div>
+  <div class="field-group">
+    <label for="coreSitePath">core-site.xml</label>
+    <div class="file-row">
+      <input type="text" id="coreSitePath" value="${escapeHtml(coreSitePath)}" placeholder="/path/to/core-site.xml">
+      <button type="button" class="browse-btn" data-target="coreSitePath">${t('wv_settings_browse')}</button>
+    </div>
+  </div>
+  <div class="field-group">
+    <label for="hdfsSitePath">hdfs-site.xml</label>
+    <div class="file-row">
+      <input type="text" id="hdfsSitePath" value="${escapeHtml(hdfsSitePath)}" placeholder="/path/to/hdfs-site.xml">
+      <button type="button" class="browse-btn" data-target="hdfsSitePath">${t('wv_settings_browse')}</button>
+    </div>
+  </div>
+  <div class="field-group" id="krb5Group" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
+    <label for="krb5ConfPath">krb5.conf <span style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);">(optional)</span></label>
+    <div class="file-row">
+      <input type="text" id="krb5ConfPath" value="${escapeHtml(krb5ConfPath)}" placeholder="/path/to/krb5.conf">
+      <button type="button" class="browse-btn" data-target="krb5ConfPath">${t('wv_settings_browse')}</button>
+    </div>
+  </div>
   <div class="field-group" id="keytabGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
-    <label for="keytabPath">${t('prompt_keytabPath')}</label>
-    <input type="text" id="keytabPath" value="${escapeHtml(keytabPath)}" placeholder="${t('prompt_keytabPath_placeholder')}">
-    <div class="hint">${t('prompt_keytabPath_hint')}</div>
-  </div>
-  <div class="field-group" id="realmGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
-    <label for="realm">${t('prompt_realm')}</label>
-    <input type="text" id="realm" value="${escapeHtml(realm)}" placeholder="${t('prompt_realm_placeholder')}">
-    <div class="hint">${t('prompt_realm_hint')}</div>
-  </div>
-  <div class="field-group" id="kdcGroup" style="${authMethod === 'KERBEROS' ? '' : 'display:none;'}">
-    <label for="kdc">${t('prompt_kdc')}</label>
-    <input type="text" id="kdc" value="${escapeHtml(kdc)}" placeholder="${t('prompt_kdc_placeholder')}">
-    <div class="hint">${t('prompt_kdc_hint')}</div>
-  </div>
-  <div class="field-group" id="tokenGroup" style="${authMethod === 'TOKEN' ? '' : 'display:none;'}">
-    <label for="delegationToken">Delegation Token / Bearer Token</label>
-    <textarea id="delegationToken" placeholder="Paste delegation token here...">${escapeHtml(delegationToken)}</textarea>
-    <div class="hint">${t('prompt_token_hint')}</div>
-  </div>
-  <div class="checkbox-row">
-    <input type="checkbox" id="insecure" ${insecure ? 'checked' : ''}>
-    <label for="insecure">${t('prompt_insecure')}</label>
+    <label for="keytabPath">${t('prompt_keytabPath')} <span style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);">(optional)</span></label>
+    <div class="file-row">
+      <input type="text" id="keytabPath" value="${escapeHtml(keytabPath)}" placeholder="${t('prompt_keytabPath_placeholder')}">
+      <button type="button" class="browse-btn" data-target="keytabPath">${t('wv_settings_browse')}</button>
+    </div>
   </div>
   <div class="actions">
     <button type="submit" class="btn-primary">${t('wv_settings_save')}</button>
@@ -425,42 +403,42 @@ document.getElementById('connForm').addEventListener('submit', e => {
   e.preventDefault();
   vscodeApi.postMessage({ type: 'save', data: getFormData() });
 });
+document.querySelectorAll('.browse-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetId = btn.dataset.target;
+    vscodeApi.postMessage({ type: 'browseFile' });
+    window.__browseTarget = targetId;
+  });
+});
+window.addEventListener('message', e => {
+  const msg = e.data;
+  if (msg.type === 'fileSelected' && window.__browseTarget) {
+    document.getElementById(window.__browseTarget).value = msg.path;
+    window.__browseTarget = null;
+  }
+});
 document.getElementById('authMethod').addEventListener('change', function() {
   const v = this.value;
-  document.getElementById('usernameGroup').style.display = (v === 'KERBEROS' || v === 'CURL_KERBEROS' || v === 'TOKEN') ? 'none' : '';
-  document.getElementById('curlGroup').style.display = v === 'CURL_KERBEROS' ? '' : 'none';
   document.getElementById('principalGroup').style.display = v === 'KERBEROS' ? '' : 'none';
+  document.getElementById('krb5Group').style.display = v === 'KERBEROS' ? '' : 'none';
   document.getElementById('keytabGroup').style.display = v === 'KERBEROS' ? '' : 'none';
-  document.getElementById('realmGroup').style.display = v === 'KERBEROS' ? '' : 'none';
-  document.getElementById('kdcGroup').style.display = v === 'KERBEROS' ? '' : 'none';
-  document.getElementById('tokenGroup').style.display = v === 'TOKEN' ? '' : 'none';
-  if (v !== 'TOKEN') document.getElementById('delegationToken').value = '';
-  if (v !== 'CURL_KERBEROS') document.getElementById('curlPath').value = 'curl';
   if (v !== 'KERBEROS') {
     document.getElementById('principal').value = '';
+    document.getElementById('krb5ConfPath').value = '';
     document.getElementById('keytabPath').value = '';
-    document.getElementById('realm').value = '';
-    document.getElementById('kdc').value = '';
   }
 });
 function getFormData() {
-  const authMethod = document.getElementById('authMethod').value;
-  const data = {
+  return {
     name: document.getElementById('name').value.trim(),
-    protocol: document.getElementById('protocol').value,
-    host: document.getElementById('host').value.trim(),
-    port: parseInt(document.getElementById('port').value) || (document.getElementById('protocol').value === 'https' ? 50470 : 50070),
-    authMethod: authMethod,
-    username: document.getElementById('username').value.trim(),
-    curlPath: document.getElementById('curlPath').value.trim() || 'curl',
+    serviceUrl: document.getElementById('serviceUrl').value.trim(),
+    authMethod: document.getElementById('authMethod').value,
     principal: document.getElementById('principal').value.trim(),
+    coreSitePath: document.getElementById('coreSitePath').value.trim(),
+    hdfsSitePath: document.getElementById('hdfsSitePath').value.trim(),
+    krb5ConfPath: document.getElementById('krb5ConfPath').value.trim(),
     keytabPath: document.getElementById('keytabPath').value.trim(),
-    realm: document.getElementById('realm').value.trim(),
-    kdc: document.getElementById('kdc').value.trim(),
-    insecure: document.getElementById('insecure').checked,
   };
-  if (authMethod === 'TOKEN') data.delegationToken = document.getElementById('delegationToken').value.trim();
-  return data;
 }
 </script>
 </body>

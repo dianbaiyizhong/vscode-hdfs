@@ -88,10 +88,10 @@ export class FolderBrowserPanel {
     const conn = connectionManager.getConnection(connectionId);
     this.connectionName = conn?.name || label;
 
-    const initPath = (prefix || '/').length > 15 ? '…' + (prefix || '/').slice(-15) : (prefix || '/');
+    const initPath = (prefix || '/').length > 15 ? '\u2026' + (prefix || '/').slice(-15) : (prefix || '/');
     this.panel = vscode.window.createWebviewPanel(
       'folderBrowser',
-      `${initPath} — ${this.connectionName}`,
+      `${initPath} \u2014 ${this.connectionName}`,
       column,
       { enableScripts: true }
     );
@@ -297,7 +297,6 @@ export class FolderBrowserPanel {
       this.onNavigate(this.connectionId, rawPath);
       this.render();
       await this.loadItems();
-      // Add the file if it was a direct file path
       if (fileExists) {
         try {
           const fs = await client.getFileStatus(trimmed);
@@ -316,7 +315,6 @@ export class FolderBrowserPanel {
       }
       this.render();
     } else {
-      // Try as folder
       this.prefix = trimmed + '/';
       this.items = [];
       this.loading = false;
@@ -348,18 +346,13 @@ export class FolderBrowserPanel {
 
   private getClient(conn: HdfsConnection): HdfsClient {
     return new HdfsClient({
-      protocol: conn.protocol,
-      host: conn.host,
-      port: conn.port,
-      authMethod: conn.authMethod,
-      username: conn.username,
-      curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
-      principal: conn.principal || undefined,
+      serviceUrl: conn.serviceUrl,
+      sessionId: conn.sessionId || undefined,
+      coreSitePath: conn.coreSitePath || undefined,
+      hdfsSitePath: conn.hdfsSitePath || undefined,
+      krb5ConfPath: conn.krb5ConfPath || undefined,
       keytabPath: conn.keytabPath || undefined,
-      realm: conn.realm || undefined,
-      kdc: conn.kdc || undefined,
-      insecure: conn.insecure,
-      delegationToken: conn.delegationToken || undefined,
+      principal: conn.principal || undefined,
     });
   }
 
@@ -370,8 +363,8 @@ export class FolderBrowserPanel {
       const conn = this.connectionManager.getConnection(this.connectionId);
       if (!conn) return;
       const client = this.getClient(conn);
-      const path = this.prefix || '/';
-      const files = await client.listStatus(path);
+      const hdfsPath = this.prefix || '/';
+      const files = await client.listStatus(hdfsPath);
       this.items = files
         .filter(f => !f.pathSuffix.startsWith('_') && !f.pathSuffix.startsWith('.'))
         .sort((a, b) => {
@@ -386,7 +379,7 @@ export class FolderBrowserPanel {
           permission: f.permission,
           owner: f.owner,
           group: f.group,
-          fullPath: path === '/' ? '/' + f.pathSuffix : (path.endsWith('/') ? path : path + '/') + f.pathSuffix,
+          fullPath: hdfsPath === '/' ? '/' + f.pathSuffix : (hdfsPath.endsWith('/') ? hdfsPath : hdfsPath + '/') + f.pathSuffix,
         }));
     } finally {
       this.loading = false;
@@ -400,8 +393,8 @@ export class FolderBrowserPanel {
       const conn = this.connectionManager.getConnection(this.connectionId);
       if (!conn) return;
       const client = this.getClient(conn);
-      const path = this.prefix || '/';
-      const files = await client.listStatus(path);
+      const hdfsPath = this.prefix || '/';
+      const files = await client.listStatus(hdfsPath);
       const lower = this.searchPattern!.toLowerCase();
       this.items = files
         .filter(f => !f.pathSuffix.startsWith('_') && !f.pathSuffix.startsWith('.'))
@@ -418,7 +411,7 @@ export class FolderBrowserPanel {
           permission: f.permission,
           owner: f.owner,
           group: f.group,
-          fullPath: path === '/' ? '/' + f.pathSuffix : (path.endsWith('/') ? path : path + '/') + f.pathSuffix,
+          fullPath: hdfsPath === '/' ? '/' + f.pathSuffix : (hdfsPath.endsWith('/') ? hdfsPath : hdfsPath + '/') + f.pathSuffix,
         }));
     } finally {
       this.loading = false;
@@ -455,7 +448,11 @@ export class FolderBrowserPanel {
     const newPath = parent ? parent + '/' + newName : '/' + newName;
     const client = this.getClient(conn);
     try {
-      await client.rename(item.fullPath, newPath);
+      const ok = await client.rename(item.fullPath, newPath);
+      if (!ok) {
+        vscode.window.showErrorMessage(t('msg_renameFailed', 'Destination already exists or operation not permitted'));
+        return;
+      }
       this.items = [];
       this.loading = false;
       await this.loadItems();
@@ -690,7 +687,7 @@ export class FolderBrowserPanel {
 
   private render(): void {
     const displayPath = this.prefix || '/';
-    this.panel.title = `${this.searchPattern ? this.searchPattern : displayPath} — ${this.connectionName}`;
+    this.panel.title = `${this.searchPattern ? this.searchPattern : displayPath} \u2014 ${this.connectionName}`;
     const records = this.getHistoryRecords?.() || [];
     const bmKeys = new Set<string>();
     if (this.jumpHistory) {
@@ -976,7 +973,7 @@ function sortBy(col) {
   headers.forEach(h => h.textContent = '');
   const idx = ['name','size','date'].indexOf(col) + 2;
   const activeHeader = document.querySelectorAll('.list-header > span')[idx];
-  if (activeHeader) activeHeader.querySelector('.sort-icon').textContent = sortDir > 0 ? '▲' : '▼';
+  if (activeHeader) activeHeader.querySelector('.sort-icon').textContent = sortDir > 0 ? '\u25B2' : '\u25BC';
   items.sort((a, b) => {
     const va = JSON.parse(a.dataset.item);
     const vb = JSON.parse(b.dataset.item);
@@ -1005,7 +1002,6 @@ document.addEventListener('change', e => {
 dlBatchBtn.addEventListener('click', () => { if (!dlBatchBtn.disabled) vscodeApi.postMessage({ type: 'downloadSelected', items: getSelectedItems() }); });
 delBatchBtn.addEventListener('click', () => { if (!delBatchBtn.disabled) vscodeApi.postMessage({ type: 'deleteSelected', items: getSelectedItems() }); });
 
-// actions
 document.addEventListener('click', e => {
   const action = e.target.closest('.action');
   if (!action) return;
@@ -1016,7 +1012,6 @@ document.addEventListener('click', e => {
   vscodeApi.postMessage({ type: act, item });
 });
 
-// folder double-click
 document.querySelectorAll('.folder').forEach(el => {
   el.addEventListener('dblclick', () => {
     const item = JSON.parse(el.dataset.item);
@@ -1024,20 +1019,17 @@ document.querySelectorAll('.folder').forEach(el => {
   });
 });
 
-// refresh
 document.getElementById('refreshBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'refresh' }));
 document.getElementById('newFolderBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'newFolder' }));
 document.getElementById('uploadBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'upload' }));
 document.getElementById('taskViewBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'openTaskView' }));
 document.getElementById('bookmarkBtn')?.addEventListener('click', () => vscodeApi.postMessage({ type: 'showBookmarks' }));
 
-// back button
 const backBtn = document.getElementById('backBtn');
 if (backBtn && !backBtn.disabled) {
   backBtn.addEventListener('click', () => vscodeApi.postMessage({ type: 'navigateUp' }));
 }
 
-// filter/search
 const filterInput = document.getElementById('filterInput');
 filterInput?.addEventListener('input', () => {
   const q = filterInput.value.toLowerCase();
@@ -1066,7 +1058,6 @@ filterInput?.addEventListener('keydown', e => {
   }
 });
 
-// path input + history autocomplete
 const pathInput = document.getElementById('pathInput');
 const dropdown = document.getElementById('historyDropdown');
 let activeIdx = -1;
@@ -1135,7 +1126,6 @@ dropdown?.addEventListener('mousedown', e => {
 });
 function escapeHtml(text) { const div = document.createElement('div'); div.appendChild(document.createTextNode(text)); return div.innerHTML; }
 
-// drag-and-drop
 const overlay = document.getElementById('dragOverlay');
 let dragCounter = 0;
 document.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; overlay.classList.add('show'); }, true);
@@ -1166,7 +1156,6 @@ document.addEventListener('drop', async e => {
   if (smallFiles.length > 0) vscodeApi.postMessage({ type: 'uploadDrop', files: smallFiles });
 }, true);
 
-// context menu (right-click)
 const ctxMenu = document.createElement('div');
 ctxMenu.className = 'history-dropdown';
 ctxMenu.style.position = 'fixed';
@@ -1181,6 +1170,8 @@ document.addEventListener('contextmenu', e => {
   ctxMenu.innerHTML = '';
   ctxMenu.style.left = e.clientX + 'px';
   ctxMenu.style.top = e.clientY + 'px';
+  ctxMenu.style.right = 'auto';
+  ctxMenu.style.whiteSpace = 'nowrap';
   const add = (text, type) => {
     const d = document.createElement('div');
     d.className = 'history-item';

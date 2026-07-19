@@ -31,7 +31,6 @@
     "onCommand:hdfs.upload",
     "onCommand:hdfs.download",
     "onCommand:hdfs.openFile",
-    "onCommand:hdfs.kinit",
     "onCommand:hdfs.goToPath",
     "onCommand:hdfs.openSettings",
     "onCommand:hdfs.openTaskView"
@@ -111,10 +110,6 @@
         "command": "hdfs.openFile",
         "title": "Open File",
         "icon": "$(go-to-file)"
-      },
-      {
-        "command": "hdfs.kinit",
-        "title": "Kerberos Ticket"
       },
       {
         "command": "hdfs.openSettings",
@@ -204,13 +199,7 @@
     },
     "configuration": {
       "title": "HDFS",
-      "properties": {
-        "hdfs.curl.path": {
-          "type": "string",
-          "default": "curl",
-          "description": "Path to curl binary (required for KERBEROS auth mode)"
-        }
-      }
+      "properties": {}
     }
   },
   "scripts": {
@@ -223,7 +212,5 @@
     "@types/vscode": "^1.80.0",
     "typescript": "^5.0.0"
   },
-  "dependencies": {
-    "kerberos": "^7.0.0"
-  }
+  "dependencies": {}
 }

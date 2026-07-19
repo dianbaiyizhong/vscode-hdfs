@@ -42,9 +42,6 @@ export function registerCommands(
     vscode.commands.registerCommand('hdfs.openTaskView', () =>
       TaskViewPanel.createOrShow()
     ),
-    vscode.commands.registerCommand('hdfs.kinit', () =>
-      handleKinit(connectionManager)
-    ),
     vscode.commands.registerCommand('hdfs.createDirectory', async (node: any) => {
       const conn = resolveConnection(node, connectionManager);
       if (!conn) return;
@@ -94,7 +91,11 @@ export function registerCommands(
       const dest = parent === '/' ? '/' + newName : parent + '/' + newName;
       const client = createClientFromConn(conn);
       try {
-        await client.rename(node.fullPath, dest);
+        const ok = await client.rename(node.fullPath, dest);
+        if (!ok) {
+          vscode.window.showErrorMessage(t('msg_renameFailed', 'Destination already exists or operation not permitted'));
+          return;
+        }
         treeProvider.refresh();
       } catch (e: any) {
         vscode.window.showErrorMessage(t('msg_renameFailed', e.message));
@@ -242,31 +243,6 @@ async function deleteConnection(
   treeProvider.refresh();
 }
 
-async function handleKinit(connectionManager: ConnectionManager): Promise<void> {
-  const principal = await vscode.window.showInputBox({
-    prompt: 'Kerberos principal',
-    placeHolder: 'user@REALM',
-  });
-  const keytab = await vscode.window.showInputBox({
-    prompt: 'Path to keytab file (optional)',
-    placeHolder: '/etc/krb5.keytab',
-  });
-  try {
-    const { HdfsClient } = require('./hdfsClient');
-    const firstConn = connectionManager.connections[0];
-    if (!firstConn) throw new Error('No connection configured');
-    const client = new HdfsClient({
-      protocol: firstConn.protocol, host: firstConn.host, port: firstConn.port,
-      authMethod: 'KERBEROS', username: '',
-      curlPath: firstConn.curlPath || 'curl', insecure: firstConn.insecure,
-    });
-    await client.kinit(principal || undefined, keytab || undefined);
-    vscode.window.showInformationMessage(t('msg_kinitSuccess'));
-  } catch (e: any) {
-    vscode.window.showErrorMessage(t('msg_kinitFailed', e.message));
-  }
-}
-
 function resolveConnection(node: any, connectionManager: ConnectionManager): HdfsConnection | undefined {
   if (!node) return undefined;
   if (node.connectionId) return connectionManager.getConnection(node.connectionId);
@@ -277,14 +253,12 @@ function resolveConnection(node: any, connectionManager: ConnectionManager): Hdf
 
 function createClientFromConn(conn: HdfsConnection): HdfsClient {
   return new HdfsClient({
-    protocol: conn.protocol, host: conn.host, port: conn.port,
-    authMethod: conn.authMethod, username: conn.username,
-    curlPath: vscode.workspace.getConfiguration('hdfs').get<string>('curl.path', conn.curlPath || 'curl'),
-    principal: conn.principal || undefined,
+    serviceUrl: conn.serviceUrl,
+    sessionId: conn.sessionId || undefined,
+    coreSitePath: conn.coreSitePath || undefined,
+    hdfsSitePath: conn.hdfsSitePath || undefined,
+    krb5ConfPath: conn.krb5ConfPath || undefined,
     keytabPath: conn.keytabPath || undefined,
-    realm: conn.realm || undefined,
-    kdc: conn.kdc || undefined,
-    insecure: conn.insecure,
-    delegationToken: conn.delegationToken || undefined,
+    principal: conn.principal || undefined,
   });
 }
