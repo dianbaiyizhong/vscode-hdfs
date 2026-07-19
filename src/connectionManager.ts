@@ -12,7 +12,6 @@ export interface HdfsConnection {
   username: string;
   curlPath: string;
   insecure: boolean;
-  isMRS?: boolean;
   delegationToken?: string;
   principal?: string;
   keytabPath?: string;

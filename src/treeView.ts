@@ -9,20 +9,13 @@ export class HdfsTreeItem extends vscode.TreeItem {
     host: string,
     port: number,
     authMethod: string,
-    public readonly isMRS?: boolean,
   ) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.id = connectionId;
     this.contextValue = 'hdfsConnection';
-    const mrsTag = isMRS ? ' [MRS]' : '';
-    this.tooltip = `${connectionName}${mrsTag}\n${host}:${port}\nAuth: ${authMethod}`;
-    this.description = `${host}:${port}${mrsTag}`;
-    const extUri = HdfsTreeDataProvider.extensionUri;
-    if (extUri) {
-      this.iconPath = isMRS
-        ? vscode.Uri.joinPath(extUri, 'resources', 'action-icons', 'cloud.svg')
-        : vscode.Uri.joinPath(extUri, 'resources', 'action-icons', 'server.svg');
-    }
+    this.tooltip = `${connectionName}\n${host}:${port}\nAuth: ${authMethod}`;
+    this.description = `${host}:${port}`;
+    this.iconPath = new vscode.ThemeIcon('cloud');
     this.command = {
       command: 'hdfs.openConnection',
       title: '',
@@ -65,7 +58,7 @@ export class HdfsTreeDataProvider implements vscode.TreeDataProvider<HdfsTreeIte
 
   private getConnectionItems(): HdfsTreeItem[] {
     return this.connectionManager.connections.map((conn) =>
-      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.host, conn.port, conn.authMethod, conn.isMRS)
+      new HdfsTreeItem(conn.id, conn.name, conn.name, conn.host, conn.port, conn.authMethod)
     );
   }
 }

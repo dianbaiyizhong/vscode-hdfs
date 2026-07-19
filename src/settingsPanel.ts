@@ -11,10 +11,7 @@ export class SettingsPanel {
 
   private static _iconsLoaded = false;
   private static gearSvg = '';
-  private static cloudSvg = '';
   private static serverSvg = '';
-  private static editSvg = '';
-  private static deleteSvg = '';
   private static backSvg = '';
 
   private static loadIcons(): void {
@@ -24,16 +21,9 @@ export class SettingsPanel {
     if (!extPath) return;
     const actDir = path.join(extPath, 'resources', 'action-icons');
     SettingsPanel.gearSvg = readSvg(path.join(actDir, 'gear.svg'));
-    SettingsPanel.cloudSvg = readSvg(path.join(actDir, 'cloud.svg'));
     SettingsPanel.serverSvg = readSvg(path.join(actDir, 'server.svg'));
-    SettingsPanel.editSvg = readSvg(path.join(actDir, 'rename.svg'));
-    SettingsPanel.deleteSvg = readSvg(path.join(actDir, 'delete.svg'));
     SettingsPanel.backSvg = readSvg(path.join(actDir, 'back.svg'));
   }
-
-  // MRS defaults
-  static readonly MRS_HTTP_PORT = 9870;
-  static readonly MRS_HTTPS_PORT = 9871;
 
   public static createOrShow(connectionManager: ConnectionManager, connectionId?: string): void {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
@@ -63,9 +53,7 @@ export class SettingsPanel {
       column,
       { enableScripts: true }
     );
-    this.panel.iconPath = SettingsPanel.extensionUri
-      ? vscode.Uri.joinPath(SettingsPanel.extensionUri, 'resources', 'action-icons', 'gear.svg')
-      : new vscode.ThemeIcon('gear');
+    this.panel.iconPath = new vscode.ThemeIcon('gear');
 
     if (connectionId) {
       this.editConnection(connectionId);
@@ -85,20 +73,6 @@ export class SettingsPanel {
         case 'add':
           this.editingId = undefined;
           this.formData = { protocol: 'http', port: 50070, authMethod: 'SIMPLE', insecure: false };
-          this.renderForm();
-          break;
-        case 'addMRS':
-          this.editingId = undefined;
-          this.formData = {
-            name: 'My MRS Cluster',
-            protocol: 'https',
-            port: SettingsPanel.MRS_HTTPS_PORT,
-            authMethod: 'KERBEROS',
-            username: '',
-            curlPath: 'curl',
-            insecure: true,
-            isMRS: true,
-          };
           this.renderForm();
           break;
         case 'edit':
@@ -140,7 +114,7 @@ export class SettingsPanel {
   }
 
   private render(): void {
-    this.panel.webview.html = getListHtml(this.connectionManager.connections, SettingsPanel.cloudSvg, SettingsPanel.serverSvg, SettingsPanel.gearSvg, SettingsPanel.editSvg, SettingsPanel.deleteSvg);
+    this.panel.webview.html = getListHtml(this.connectionManager.connections, SettingsPanel.serverSvg, SettingsPanel.gearSvg);
   }
 
   private renderForm(): void {
@@ -176,7 +150,6 @@ export class SettingsPanel {
       realm: data.realm || '',
       kdc: data.kdc || '',
       insecure: data.insecure === true || data.insecure === 'true',
-      isMRS: data.isMRS === true || data.isMRS === 'true',
       delegationToken: data.delegationToken || '',
     };
     if (this.editingId) {
@@ -241,7 +214,7 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function getListHtml(connections: HdfsConnection[], cloudSvg: string, serverSvg: string, gearSvg: string, editSvg: string, deleteSvg: string): string {
+function getListHtml(connections: HdfsConnection[], serverSvg: string, gearSvg: string): string {
   const rows = connections.length === 0
     ? `<div class="empty">${t('wv_settings_empty')}</div>`
     : connections.map(c => {
@@ -255,21 +228,17 @@ function getListHtml(connections: HdfsConnection[], cloudSvg: string, serverSvg:
         const sslTag = c.protocol === 'https'
           ? `<span class="proxy-tag" style="background:#059669;">HTTPS</span>`
           : '';
-        const mrsTag = c.isMRS
-          ? `<span class="proxy-tag" style="background:#d97706;">MRS</span>`
-          : '';
-        const iconSvg = c.isMRS ? cloudSvg : serverSvg;
         return `<div class="conn-row" data-id="${c.id}">
           <div class="conn-info">
-            <span class="conn-icon">${iconSvg}</span>
+            <span class="conn-icon">${serverSvg}</span>
             <div class="conn-details">
-              <div class="conn-name">${escapeHtml(c.name)} ${mrsTag}${authTag}${sslTag}</div>
+              <div class="conn-name">${escapeHtml(c.name)} ${authTag}${sslTag}</div>
               <div class="conn-meta">${escapeHtml(c.host)}:${c.port}</div>
             </div>
           </div>
           <div class="conn-actions">
-            <button class="action-btn edit-btn" data-action="edit" title="${t('wv_settings_edit')}">${editSvg}</button>
-            <button class="action-btn delete-btn" data-action="delete" title="${t('wv_settings_delete')}">${deleteSvg}</button>
+            <button class="action-btn edit-btn" data-action="edit" title="${t('wv_settings_edit')}">✏️</button>
+            <button class="action-btn delete-btn" data-action="delete" title="${t('wv_settings_delete')}">🗑️</button>
           </div>
         </div>`;
       }).join('\n');
@@ -287,9 +256,6 @@ body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:
 .empty { text-align:center; margin-top:48px; color:var(--vscode-descriptionForeground); }
 .add-btn { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:6px 16px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .add-btn:hover { background:var(--vscode-button-hoverBackground); }
-.mrs-btn { background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); border:none; padding:6px 16px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); margin-left:8px; }
-.mrs-btn:hover { background:var(--vscode-button-secondaryHoverBackground); }
-.mrs-btn svg { width:16px; height:16px; vertical-align:middle; margin-right:4px; }
 .conn-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; margin-bottom:4px; border-radius:4px; border:1px solid var(--vscode-panel-border); }
 .conn-row:hover { background:var(--vscode-list-hoverBackground); }
 .conn-info { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
@@ -310,14 +276,12 @@ body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:
   <span class="header-title">${gearSvg}${t('wv_settings_title')}</span>
   <div>
     <button class="add-btn" id="addBtn">+ ${t('wv_settings_add')}</button>
-    <button class="mrs-btn" id="mrsBtn">${cloudSvg}+MRS</button>
   </div>
 </div>
 ${rows}
 <script>
 const vscodeApi = acquireVsCodeApi();
 document.getElementById('addBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'add' }));
-document.getElementById('mrsBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'addMRS' }));
 document.querySelectorAll('.edit-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const id = btn.closest('.conn-row').dataset.id;
@@ -348,7 +312,6 @@ function getFormHtml(data: Partial<HdfsConnection>, isEdit: boolean, backSvg: st
   const realm = data.realm || '';
   const kdc = data.kdc || '';
   const insecure = data.insecure ?? false;
-  const isMRS = data.isMRS ?? false;
   const delegationToken = data.delegationToken || '';
 
   return `<!DOCTYPE html>
@@ -372,7 +335,6 @@ textarea { resize:vertical; min-height:60px; }
 .checkbox-row { display:flex; align-items:center; gap:8px; margin:14px 0; }
 .checkbox-row input { width:auto; }
 .checkbox-row label { margin:0;font-size:var(--vscode-font-size);cursor:pointer; }
-.mrs-badge { display:inline-block; font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; background:#d97706; color:#fff; margin-left:8px; }
 .actions { display:flex; gap:8px; margin-top:20px; }
 .btn-primary { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:8px 20px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .btn-primary:hover { background:var(--vscode-button-hoverBackground); }
@@ -386,7 +348,6 @@ textarea { resize:vertical; min-height:60px; }
 <div class="header">
   <button class="back-btn" id="backBtn">${backSvg}</button>
   <span class="header-title">${isEdit ? t('wv_settings_edit_title') : t('wv_settings_add_title')}</span>
-  ${isMRS ? '<span class="mrs-badge">MRS</span>' : ''}
 </div>
 <form id="connForm">
   <div class="field-group">
@@ -405,7 +366,7 @@ textarea { resize:vertical; min-height:60px; }
     <input type="text" id="host" value="${escapeHtml(host)}" placeholder="${t('prompt_host_placeholder')}" required>
   </div>
   <div class="field-group">
-    <label for="port">${t('prompt_port')} <span id="portHint" style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);">${isMRS ? '(MRS: 9870/9871)' : ''}</span></label>
+    <label for="port">${t('prompt_port')} <span id="portHint" style="font-weight:normal;font-size:11px;color:var(--vscode-descriptionForeground);"></span></label>
     <input type="number" id="port" value="${port}" placeholder="${t('prompt_port_placeholder')}" required>
   </div>
   <div class="field-group">
@@ -448,13 +409,12 @@ textarea { resize:vertical; min-height:60px; }
   <div class="field-group" id="tokenGroup" style="${authMethod === 'TOKEN' ? '' : 'display:none;'}">
     <label for="delegationToken">Delegation Token / Bearer Token</label>
     <textarea id="delegationToken" placeholder="Paste delegation token here...">${escapeHtml(delegationToken)}</textarea>
-    <div class="hint">For MRS: get token via "curl --negotiate -u : 'https://host:9871/webhdfs/v1/?op=GETDELEGATIONTOKEN&user=hdfs'"</div>
+    <div class="hint">${t('prompt_token_hint')}</div>
   </div>
   <div class="checkbox-row">
     <input type="checkbox" id="insecure" ${insecure ? 'checked' : ''}>
-    <label for="insecure">${t('prompt_insecure')} ${isMRS ? '(MRS uses self-signed certs, recommend Yes)' : ''}</label>
+    <label for="insecure">${t('prompt_insecure')}</label>
   </div>
-  <input type="hidden" id="isMRS" value="${isMRS ? 'true' : 'false'}">
   <div class="actions">
     <button type="submit" class="btn-primary">${t('wv_settings_save')}</button>
     <button type="button" class="btn-test" id="testBtn">${t('wv_settings_test')}</button>
@@ -463,10 +423,6 @@ textarea { resize:vertical; min-height:60px; }
 </form>
 <script>
 const vscodeApi = acquireVsCodeApi();
-const mrsDefaultHttp = ${SettingsPanel.MRS_HTTP_PORT};
-const mrsDefaultHttps = ${SettingsPanel.MRS_HTTPS_PORT};
-const isMRS = ${isMRS ? 'true' : 'false'};
-
 document.getElementById('backBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'cancel' }));
 document.getElementById('cancelBtn').addEventListener('click', () => vscodeApi.postMessage({ type: 'cancel' }));
 document.getElementById('testBtn').addEventListener('click', () => {
@@ -475,12 +431,6 @@ document.getElementById('testBtn').addEventListener('click', () => {
 document.getElementById('connForm').addEventListener('submit', e => {
   e.preventDefault();
   vscodeApi.postMessage({ type: 'save', data: getFormData() });
-});
-document.getElementById('protocol').addEventListener('change', function() {
-  if (isMRS) {
-    document.getElementById('port').value = this.value === 'https' ? mrsDefaultHttps : mrsDefaultHttp;
-    document.getElementById('portHint').textContent = this.value === 'https' ? '(MRS: 9871)' : '(MRS: 9870)';
-  }
 });
 document.getElementById('authMethod').addEventListener('change', function() {
   const v = this.value;
@@ -506,7 +456,7 @@ function getFormData() {
     name: document.getElementById('name').value.trim(),
     protocol: document.getElementById('protocol').value,
     host: document.getElementById('host').value.trim(),
-    port: parseInt(document.getElementById('port').value) || (document.getElementById('protocol').value === 'https' ? (isMRS ? mrsDefaultHttps : 50470) : (isMRS ? mrsDefaultHttp : 50070)),
+    port: parseInt(document.getElementById('port').value) || (document.getElementById('protocol').value === 'https' ? 50470 : 50070),
     authMethod: authMethod,
     username: document.getElementById('username').value.trim(),
     curlPath: document.getElementById('curlPath').value.trim() || 'curl',
@@ -515,7 +465,6 @@ function getFormData() {
     realm: document.getElementById('realm').value.trim(),
     kdc: document.getElementById('kdc').value.trim(),
     insecure: document.getElementById('insecure').checked,
-    isMRS: isMRS,
   };
   if (authMethod === 'TOKEN') data.delegationToken = document.getElementById('delegationToken').value.trim();
   return data;

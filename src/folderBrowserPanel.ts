@@ -95,9 +95,7 @@ export class FolderBrowserPanel {
       column,
       { enableScripts: true }
     );
-    this.panel.iconPath = FolderBrowserPanel.extensionUri
-      ? vscode.Uri.joinPath(FolderBrowserPanel.extensionUri, 'resources', 'action-icons', 'window.svg')
-      : new vscode.ThemeIcon('window');
+    this.panel.iconPath = new vscode.ThemeIcon('window');
 
     if (!skipInitialLoad) {
       this.loadItems().then(() => this.render());
