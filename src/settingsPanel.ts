@@ -10,8 +10,6 @@ export class SettingsPanel {
   public static extensionUri: vscode.Uri | undefined;
 
   private static _iconsLoaded = false;
-  private static gearSvg = '';
-  private static serverSvg = '';
   private static backSvg = '';
 
   private static loadIcons(): void {
@@ -20,8 +18,6 @@ export class SettingsPanel {
     const extPath = vscode.extensions.getExtension('nntk.vscode-hdfs')?.extensionPath;
     if (!extPath) return;
     const actDir = path.join(extPath, 'resources', 'action-icons');
-    SettingsPanel.gearSvg = readSvg(path.join(actDir, 'gear.svg'));
-    SettingsPanel.serverSvg = readSvg(path.join(actDir, 'server.svg'));
     SettingsPanel.backSvg = readSvg(path.join(actDir, 'back.svg'));
   }
 
@@ -114,7 +110,7 @@ export class SettingsPanel {
   }
 
   private render(): void {
-    this.panel.webview.html = getListHtml(this.connectionManager.connections, SettingsPanel.serverSvg, SettingsPanel.gearSvg);
+    this.panel.webview.html = getListHtml(this.connectionManager.connections);
   }
 
   private renderForm(): void {
@@ -214,7 +210,7 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function getListHtml(connections: HdfsConnection[], serverSvg: string, gearSvg: string): string {
+function getListHtml(connections: HdfsConnection[]): string {
   const rows = connections.length === 0
     ? `<div class="empty">${t('wv_settings_empty')}</div>`
     : connections.map(c => {
@@ -230,7 +226,7 @@ function getListHtml(connections: HdfsConnection[], serverSvg: string, gearSvg: 
           : '';
         return `<div class="conn-row" data-id="${c.id}">
           <div class="conn-info">
-            <span class="conn-icon">${serverSvg}</span>
+            <span class="conn-icon">☁️</span>
             <div class="conn-details">
               <div class="conn-name">${escapeHtml(c.name)} ${authTag}${sslTag}</div>
               <div class="conn-meta">${escapeHtml(c.host)}:${c.port}</div>
@@ -251,29 +247,26 @@ function getListHtml(connections: HdfsConnection[], serverSvg: string, gearSvg: 
 <style>
 body { margin:0; padding:16px; font-family:var(--vscode-font-family); font-size:var(--vscode-font-size); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
 .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
-.header-title { display:flex; align-items:center; gap:8px; font-size:18px; font-weight:600; }
-.header-title svg { width:20px; height:20px; }
+.header-title { font-size:18px; font-weight:600; }
 .empty { text-align:center; margin-top:48px; color:var(--vscode-descriptionForeground); }
 .add-btn { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border:none; padding:6px 16px; cursor:pointer; border-radius:2px; font-size:var(--vscode-font-size); }
 .add-btn:hover { background:var(--vscode-button-hoverBackground); }
 .conn-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; margin-bottom:4px; border-radius:4px; border:1px solid var(--vscode-panel-border); }
 .conn-row:hover { background:var(--vscode-list-hoverBackground); }
 .conn-info { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
-.conn-icon { display:flex; align-items:center; }
-.conn-icon svg { width:20px; height:20px; display:block; }
+.conn-icon { font-size:20px; }
 .conn-details { flex:1; min-width:0; }
 .conn-name { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .conn-meta { font-size:12px; color:var(--vscode-descriptionForeground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 .conn-actions { display:flex; gap:6px; flex-shrink:0; }
-.action-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 8px; border-radius:3px; line-height:0; opacity:0.7; transition:opacity 0.15s; }
+.action-btn { background:none; border:1px solid var(--vscode-panel-border); cursor:pointer; padding:4px 8px; border-radius:3px; font-size:14px; opacity:0.7; transition:opacity 0.15s; }
 .action-btn:hover { opacity:1; background:var(--vscode-list-hoverBackground); }
-.action-btn svg { width:16px; height:16px; display:block; }
 .proxy-tag { display:inline-block; font-size:10px; font-weight:600; padding:1px 5px; border-radius:3px; background:var(--vscode-button-background); color:var(--vscode-button-foreground); vertical-align:middle; margin-left:4px; }
 </style>
 </head>
 <body>
 <div class="header">
-  <span class="header-title">${gearSvg}${t('wv_settings_title')}</span>
+  <span class="header-title">⚙️ ${t('wv_settings_title')}</span>
   <div>
     <button class="add-btn" id="addBtn">+ ${t('wv_settings_add')}</button>
   </div>

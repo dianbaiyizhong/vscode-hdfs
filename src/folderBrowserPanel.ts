@@ -833,10 +833,21 @@ body {
 .icon-btn {
   background: none; border: none; color: var(--vscode-foreground);
   cursor: pointer; padding: 2px 6px; border-radius: 3px; opacity: 0.7;
-  display: flex; align-items: center; position: relative; font-size: 14px;
+  display: flex; align-items: center; position: relative;
 }
 .icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 .icon-btn:disabled { opacity: 0.3; cursor: default; }
+.icon-btn:disabled:hover { opacity: 0.3; background: none; }
+.icon-btn::after {
+  content: attr(title); position: absolute; bottom: -28px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--vscode-editorWidget-background, #333);
+  color: var(--vscode-editorWidget-foreground, #fff);
+  font-size: 11px; padding: 2px 6px; border-radius: 3px;
+  white-space: nowrap; pointer-events: none; opacity: 0;
+  transition: opacity 0.15s; z-index: 999;
+}
+.icon-btn:hover::after { opacity: 1; }
 .header-sep { width: 1px; height: 18px; background: var(--vscode-panel-border); margin: 0 4px; flex-shrink: 0; }
 .filter-input {
   width: 100%; padding: 5px 8px; margin-bottom: 8px;
@@ -863,8 +874,7 @@ body {
 .item.selected { background: var(--vscode-list-inactiveSelectionBackground); }
 .item.folder { cursor: pointer; }
 .item-cb { width: 14px; height: 14px; cursor: pointer; accent-color: var(--vscode-focusBorder); }
-.item-icon { width:20px; height:20px; display:flex; align-items:center; justify-content:center; }
-.item-icon svg { width:20px; height:20px; }
+.item-icon { font-size: 16px; text-align: center; display: flex; align-items: center; justify-content: center; height: 100%; }
 .item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-meta { font-size: 11px; color: var(--vscode-descriptionForeground); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-date { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -873,11 +883,8 @@ body {
 .action {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: 3px; cursor: pointer;
-  line-height:0; opacity: 0.7; transition: opacity 0.1s, background 0.1s; position: relative;
+  font-size: 14px; opacity: 0.7; transition: opacity 0.1s, background 0.1s; position: relative;
 }
-.action svg { width:16px; height:16px; }
-.icon-btn svg { width:18px; height:18px; display:block; }
-.back-btn svg { width:18px; height:18px; display:block; }
 .action:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 .action::after {
   content: attr(title); position: absolute; bottom: -28px; left: 50%;
